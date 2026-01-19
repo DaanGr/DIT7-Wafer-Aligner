@@ -1,0 +1,254 @@
+// =================================================================
+// EM_WaferMeasurement
+// Wafer Aligner Implementation: Measurement and Calculation
+// =================================================================
+
+// -----------------------------------------------------------------
+// LOCAL TAGS (Definitions)
+// -----------------------------------------------------------------
+// STATICS (Need persistence across cycles):
+// #LVrlStartDistTarget : REAL; // Distance at start of measurement
+// #LVrlMinDist         : REAL; // Minimum distance detected
+// #LVrlMaxDist         : REAL; // Maximum distance detected
+// #LVrlMinAngle        : REAL; // Angle at minimum distance
+// #LVrlMaxAngle        : REAL; // Angle at maximum distance
+// #LVblNotchDetected   : BOOL; // Flag: Notch found
+// #LVrlNotchAngle      : REAL; // Angle where notch is located
+// #LVrlMaxNotchDepth   : REAL; // Depth of the notch detected
+// #LVrlNotchStartAngle : REAL; // Angle where notch starts
+// #LVrlNotchEndAngle   : REAL; // Angle where notch ends
+// #LVblInNotchRegion   : BOOL; // Currently in notch region
+// #LVdiNotchSampleCount: DINT; // Number of samples in notch
+// #LVrlNotchAngleSum   : REAL; // Sum of angles in notch for averaging
+//
+// TEMPS:
+// #LVrlCurrentDist     : REAL; // Current sensor distance
+// #LVrlCurrentAngle    : REAL; // Current spindle angle
+// #LVrlTempCorrection  : REAL; // Temporary calculation var
+// #LVblStartTrigger    : BOOL; // Start trigger from mode selection
+// #LVblResetTrigger    : BOOL; // Reset trigger from mode selection
+// #LVrlSpindlePos      : REAL; // Spindle position from mode selection
+// #LVrlDelta           : REAL; // Distance delta from reference
+// #LVrlNotchCenter     : REAL; // Calculated notch center angle
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioEm.Config.c_rlNotchThreshold := 0.9; // Threshold for notch detection (Delta > 0.9mm originally)
+    #ioEm.Config.c_rlMaxEccentricity := 5.0;  // Max allowed eccentricity
+    #ioEm.Config.c_rlSensorOffset := 180.0; // Angle between 0-position and sensor
+    #ioEm.Status.s_diStatus := 4; // Start in IDLE
+    #ioEm.Status.s_diOpMode := 0; // 0=Auto, 1=Hand
+END_IF;
+
+// =================================================================
+// 2A. Call Sensor
+// =================================================================
+#ioEm.seWaferSensor.Input.i_rlDistance_mm := "I_Wafer_Dist";
+#ioEm.seWaferSensor.HMI.hmi_blReset_Alarm := #ioEm.Input.i_blReset;
+
+"SE_DistanceSensor"(#ioEm.seWaferSensor);
+#LVrlCurrentDist := #ioEm.seWaferSensor.Output.q_rlDistance_mm;
+
+// =================================================================
+// 2. Mode Selection
+// =================================================================
+IF #ioEm.Status.s_diOpMode = 1 THEN
+    // HAND MODE (HMI Control)
+    #LVblStartTrigger := #ioEm.HMI.hmi_blStart;
+    #LVblResetTrigger := #ioEm.HMI.hmi_blReset_Alarm;
+    #LVrlSpindlePos := #ioEm.HMI.hmi_rlSpindlePos;
+ELSE
+    // AUTO MODE (External/Sequence Control)
+    #LVblStartTrigger := #ioEm.Input.i_blRun;
+    #LVblResetTrigger := #ioEm.Input.i_blReset;
+    #LVrlSpindlePos := #ioEm.Input.i_rlSpindlePos;
+END_IF;
+
+// =================================================================
+// 3. State Machine Logic
+// =================================================================
+CASE #ioEm.Status.s_diStatus OF
+        
+    4: // IDLE: Wait for start command
+        #ioEm.Output.q_blBusy := FALSE;
+        #ioEm.Output.q_blDone := FALSE;
+        #ioEm.Output.q_blNotchFound := FALSE;
+        
+        // Start measurement if Input Run is high
+        IF #LVblStartTrigger THEN
+            // Reset for new measurement
+            #LVrlMinDist := 1000.0;
+            #LVrlMaxDist := 0.0;
+            #LVblNotchDetected := FALSE;
+            #LVrlNotchAngle := 0.0;
+            #LVrlMaxNotchDepth := 0.0;
+            #LVrlNotchStartAngle := 0.0;
+            #LVrlNotchEndAngle := 0.0;
+            #LVblInNotchRegion := FALSE;
+            #LVdiNotchSampleCount := 0;
+            #LVrlNotchAngleSum := 0.0;
+            // Determine zero point at start
+            #LVrlStartDistTarget := #LVrlCurrentDist;
+            
+            #ioEm.Status.s_diStatus := 6;
+        END_IF;
+        
+    6: // MEASURING: Collect data during rotation (Step 1 & 2)
+        #ioEm.Output.q_blBusy := TRUE;
+        
+        // Input: Current Spindle Angle (Linked in Unit/Main)
+        #LVrlCurrentAngle := #LVrlSpindlePos;
+        
+        // Calculate delta from reference
+        #LVrlDelta := ABS(#LVrlCurrentDist - #LVrlStartDistTarget);
+        
+        // A. Notch Detection (Step 3: Finding the Notch)
+        // Detect notch entry and exit, track region, calculate center
+        IF #LVrlDelta > #ioEm.Config.c_rlNotchThreshold THEN
+            // We are in a notch region
+            IF NOT #LVblInNotchRegion THEN
+                // Just entered notch region
+                #LVblInNotchRegion := TRUE;
+                #LVrlNotchStartAngle := #LVrlCurrentAngle;
+                #LVdiNotchSampleCount := 0;
+                #LVrlNotchAngleSum := 0.0;
+            END_IF;
+            
+            #LVblNotchDetected := TRUE;
+            
+            // Accumulate samples for center calculation
+            #LVdiNotchSampleCount := #LVdiNotchSampleCount + 1;
+            #LVrlNotchAngleSum := #LVrlNotchAngleSum + #LVrlCurrentAngle;
+            
+            // Track deepest point in notch
+            IF #LVrlDelta > #LVrlMaxNotchDepth THEN
+                #LVrlMaxNotchDepth := #LVrlDelta;
+                #LVrlNotchAngle := #LVrlCurrentAngle; // Deepest point angle
+            END_IF;
+        ELSE
+            // Outside notch threshold
+            IF #LVblInNotchRegion THEN
+                // Just exited notch region - calculate center
+                #LVrlNotchEndAngle := #LVrlCurrentAngle;
+                #LVblInNotchRegion := FALSE;
+                
+                // Calculate notch center from start and end angles
+                IF #LVdiNotchSampleCount > 0 THEN
+                    // Average method: use accumulated samples
+                    #LVrlNotchCenter := #LVrlNotchAngleSum / DINT_TO_REAL(#LVdiNotchSampleCount);
+                ELSE
+                    // Fallback: midpoint between start and end
+                    #LVrlNotchCenter := (#LVrlNotchStartAngle + #LVrlNotchEndAngle) / 2.0;
+                    
+                    // Handle wraparound case (notch crosses 0°)
+                    IF ABS(#LVrlNotchEndAngle - #LVrlNotchStartAngle) > 180.0 THEN
+                        #LVrlNotchCenter := #LVrlNotchCenter + 180.0;
+                        IF #LVrlNotchCenter >= 360.0 THEN
+                            #LVrlNotchCenter := #LVrlNotchCenter - 360.0;
+                        END_IF;
+                    END_IF;
+                END_IF;
+                
+                // Update notch angle to center (more accurate than deepest point)
+                #LVrlNotchAngle := #LVrlNotchCenter;
+            END_IF;
+        END_IF;
+        
+        // B. Eccentricity (Step 4: Sine analysis)
+        // Check Min and Max distance (ignore notch peak for this)
+        IF #LVrlDelta < #ioEm.Config.c_rlNotchThreshold THEN
+            // Update Minimum
+            IF #LVrlCurrentDist < #LVrlMinDist THEN
+                #LVrlMinDist := #LVrlCurrentDist;
+                #LVrlMinAngle := #LVrlCurrentAngle;
+            END_IF;
+            
+            // Update Maximum
+            IF #LVrlCurrentDist > #LVrlMaxDist THEN
+                #LVrlMaxDist := #LVrlCurrentDist;
+                #LVrlMaxAngle := #LVrlCurrentAngle;
+            END_IF;
+        END_IF;
+        
+        // Stop Condition: When input run drops (Unit indicates rotation complete)
+        IF NOT #LVblStartTrigger THEN
+            #ioEm.Status.s_diStatus := 8;
+        END_IF;
+        
+    8: // CALCULATION: Calculation and Correction (Step 4)
+        #ioEm.Output.q_blBusy := TRUE;
+        
+        // 1. Calculate Eccentricity (mm from center)
+        // Amplitude = (Max - Min) / 2
+        #ioEm.Output.q_rlEccentricity := (#LVrlMaxDist - #LVrlMinDist) / 2.0;
+        
+        // 2. Calculate Rotation Correction (Theta)
+        #ioEm.Output.q_blNotchFound := #LVblNotchDetected;
+        
+        IF #LVblNotchDetected THEN
+            // Store where notch was seen
+            #ioEm.Output.q_rlNotchAngle := #LVrlNotchAngle;
+            #ioEm.Output.q_rlNotchDepth := #LVrlMaxNotchDepth;
+            
+            // Calculate how much to rotate to get notch to 0
+            #LVrlTempCorrection := #LVrlNotchAngle + #ioEm.Config.c_rlSensorOffset;
+            
+            // Normalize to 0-360
+            WHILE #LVrlTempCorrection >= 360.0 DO
+                #LVrlTempCorrection := #LVrlTempCorrection - 360.0;
+            END_WHILE;
+            
+            WHILE #LVrlTempCorrection < 0.0 DO
+                #LVrlTempCorrection := #LVrlTempCorrection + 360.0;
+            END_WHILE;
+            
+            // Wrap to 0-360 range (edge case)
+            IF #LVrlTempCorrection >= 360.0 THEN
+                #LVrlTempCorrection := 0.0;
+            END_IF;
+            
+            #ioEm.Output.q_rlRotationCorrection := #LVrlTempCorrection;
+        ELSE
+            #ioEm.Output.q_rlNotchAngle := 0.0;
+            #ioEm.Output.q_rlRotationCorrection := 0.0;
+            #ioEm.Output.q_rlNotchDepth := 0.0;
+        END_IF;
+        
+        #ioEm.Status.s_diStatus := 17;
+        
+    17: // COMPLETE: Ready for repositioning (Step 5)
+        #ioEm.Output.q_blBusy := FALSE;
+        #ioEm.Output.q_blDone := TRUE;
+        
+        // Wait for reset
+        IF #LVblResetTrigger THEN
+            #ioEm.Status.s_diStatus := 4;
+        END_IF;
+        
+END_CASE;
+
+// =================================================================
+// 4. HMI
+// =================================================================
+#ioEm.HMI.hmi_rlActDistance := #LVrlCurrentDist;
+#ioEm.HMI.hmi_rlEccentricity := #ioEm.Output.q_rlEccentricity;
+#ioEm.HMI.hmi_rlNotchAngle := #ioEm.Output.q_rlNotchAngle;
+#ioEm.HMI.hmi_rlNotchDepth := #ioEm.Output.q_rlNotchDepth;
+#ioEm.HMI.hmi_blNotchFound := #ioEm.Output.q_blNotchFound;
+#ioEm.HMI.hmi_diStatus := #ioEm.Status.s_diStatus;
+#ioEm.HMI.hmi_diOpMode := #ioEm.Status.s_diOpMode;
+#ioEm.HMI.hmi_blBusy := #ioEm.Output.q_blBusy;
+#ioEm.HMI.hmi_blDone := #ioEm.Output.q_blDone;
+#ioEm.HMI.hmi_rlRotationCorrection := #ioEm.Output.q_rlRotationCorrection;
+#ioEm.HMI.hmi_rlMinDist := #LVrlMinDist;
+#ioEm.HMI.hmi_rlMaxDist := #LVrlMaxDist;
+#ioEm.HMI.hmi_rlStartDistTarget := #LVrlStartDistTarget;
+#ioEm.HMI.hmi_rlNotchThreshold := #ioEm.Config.c_rlNotchThreshold;
+#ioEm.HMI.hmi_rlSensorOffset := #ioEm.Config.c_rlSensorOffset;
+#ioEm.HMI.hmi_rlNotchStartAngle := #LVrlNotchStartAngle;
+#ioEm.HMI.hmi_rlNotchEndAngle := #LVrlNotchEndAngle;
+#ioEm.HMI.hmi_diNotchSampleCount := #LVdiNotchSampleCount;
+#ioEm.HMI.hmi_rlDelta := #LVrlDelta;
+

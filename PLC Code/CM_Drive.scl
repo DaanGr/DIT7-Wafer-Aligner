@@ -1,0 +1,193 @@
+// =================================================================
+// CM_Drive
+// Control Module for Drive/Motion Control (Updated with Busy, Pause and Run monitoring)
+// =================================================================
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioCM.Config.c_rlMaxLimit := 1000.0;
+    #ioCM.Config.c_rlMinLimit := 0.0;
+    #ioCM.Config.c_diMode := 0;
+    #ioCM.Status.s_diStatus := 4;
+    #ioCM.Status.s_diOpMode := 0;
+END_IF;
+
+// =================================================================
+// 2. Mode Selection
+// =================================================================
+IF #ioCM.Status.s_diOpMode = 1 THEN
+    #LVrlTarget := #ioCM.HMI.hmi_rlTargetValue;
+    #LVrlVelocity := #ioCM.HMI.hmi_rlTargetVelocity;
+    #LVblStartTrigger := #ioCM.HMI.hmi_blStart;
+    #LVblReturn := #ioCM.HMI.hmi_blReturn;
+ELSE
+    #LVrlTarget := #ioCM.Input.i_rlTargetValue;
+    #LVrlVelocity := #ioCM.Input.i_rlTargetVelocity;
+    #LVblStartTrigger := #ioCM.Input.i_blRun;
+    #LVblReturn := #ioCM.Input.i_blReturn;
+END_IF;
+
+// =================================================================
+// 2A. ALWAYS ACTIVE BLOCKS
+// =================================================================
+
+#MC_RESET_Instance(Axis := #Axis,
+                   Execute := #ioCM.HMI.hmi_blReset_Alarm);
+
+IF #MC_RESET_Instance.Done AND #ioCM.HMI.hmi_blReset_Alarm THEN
+    #ioCM.Status.s_blAlarm := FALSE;
+    IF #ioCM.Status.s_diStatus = 2 THEN
+        #ioCM.Status.s_diStatus := 4;
+    END_IF;
+END_IF;
+
+// Power block: Axis is only on if we are not in STOPPED/ALARM
+#MC_POWER_Instance(Axis := #Axis,
+                   Enable := (#ioCM.Status.s_diStatus <> 2),
+                   StartMode := 1);
+
+// =================================================================
+// 3. State Machine Logic
+// =================================================================
+CASE #ioCM.Status.s_diStatus OF
+        
+    2: // STOPPED / ALARM
+        #ioCM.Output.q_blDone := FALSE;
+        #ioCM.Output.q_blBusy := FALSE;
+        // Reset alle Move-commando's
+        #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                  Execute := FALSE);
+        #MC_HALT_Instance(Axis := #Axis,
+                          Execute := FALSE);
+        
+    4: // IDLE
+        #ioCM.Output.q_blDone := FALSE;
+        #ioCM.Output.q_blBusy := FALSE;
+        
+        #MC_HOME_Instance(Axis := #Axis,
+                          Execute := #MC_POWER_Instance.Status,
+                          Position := 0.0);
+        
+        
+        IF #MC_HOME_Instance.Done THEN
+            // Start check
+            IF #LVblStartTrigger AND NOT #ioCM.Output.q_blDone THEN
+                #ioCM.Status.s_diStatus := 6;
+            END_IF;
+        END_IF;
+        
+    6: // RUNNING: To Target
+        #ioCM.Output.q_blBusy := TRUE;
+        
+        // If Run drops: Pause
+        IF NOT #LVblStartTrigger THEN
+            #ioCM.Status.s_diStatus := 11;
+        END_IF;
+        
+        IF #ioCM.Config.c_diMode = 1 THEN // Mode 1 = Spindle / Relative
+            #MC_MOVERELATIVE_Instance(Axis := #Axis,
+                                      Execute := TRUE,
+                                      Distance := #LVrlTarget, // Here 360.0 becomes a distance
+                                      Velocity := #LVrlVelocity,
+                                      Error => #ioCM.Status.s_blAlarm);
+            
+            IF #MC_MOVERELATIVE_Instance.Done THEN
+                #MC_MOVERELATIVE_Instance(Axis := #Axis,
+                                          Execute := FALSE);
+                #ioCM.Status.s_diStatus := 17;
+            END_IF;
+        ELSE // Mode 0 = Slider / Absolute
+            #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                      Execute := TRUE,
+                                      Position := #LVrlTarget,
+                                      Velocity := #LVrlVelocity,
+                                      Error => #ioCM.Status.s_blAlarm);
+            
+            IF #MC_MOVEABSOLUTE_Instance.Done THEN
+                #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                          Execute := FALSE);
+                #ioCM.Status.s_diStatus := 17;
+            END_IF;
+        END_IF;
+        
+    11: // PAUSED: Interrupted movement
+        #ioCM.Output.q_blBusy := TRUE;
+        
+        // Stop the axis temporarily
+        #MC_HALT_Instance(Axis := #Axis,
+                          Execute := TRUE);
+        
+        // Set commands to FALSE so they can trigger a new edge on resume
+        #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                  Execute := FALSE);
+        
+        IF #LVblStartTrigger THEN
+            // Resume: back to the correct active state
+            #MC_HALT_Instance(Axis := #Axis,
+                              Execute := FALSE);
+            #ioCM.Status.s_diStatus := 6; // Or 20, depending on where you were
+        ELSIF #ioCM.Input.i_blStop THEN
+            #ioCM.Status.s_diStatus := 7;
+        END_IF;
+        
+    17: // COMPLETE (Waiting for return trigger)
+        #ioCM.Output.q_blBusy := FALSE;
+        IF #ioCM.Config.c_diMode = 1 THEN
+            #ioCM.Status.s_diStatus := 21;
+        ELSIF #LVblReturn AND #LVblStartTrigger THEN
+            #ioCM.Status.s_diStatus := 20;
+        END_IF;
+        
+    20: // RETURNING: To 0
+        #ioCM.Output.q_blBusy := TRUE;
+        
+        IF NOT #LVblStartTrigger THEN
+            #ioCM.Status.s_diStatus := 11;
+        END_IF;
+        
+        #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                  Execute := TRUE,
+                                  Position := 0.0,
+                                  Velocity := #LVrlVelocity,
+                                  Error => #ioCM.Status.s_blAlarm);
+        
+        IF #MC_MOVEABSOLUTE_Instance.Done THEN
+            #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
+                                      Execute := FALSE);
+            #ioCM.Status.s_diStatus := 21;
+        END_IF;
+        
+    21: // FINAL DONE
+        #ioCM.Output.q_blBusy := FALSE;
+        #ioCM.Output.q_blDone := TRUE;
+        IF NOT #LVblStartTrigger THEN
+            #ioCM.Status.s_diStatus := 4;
+        END_IF;
+        
+    7: // STOPPING: Aborting to STOPPED
+        #ioCM.Output.q_blBusy := TRUE;
+        #MC_HALT_Instance(Axis := #Axis,
+                          Execute := TRUE);
+        IF #MC_HALT_Instance.Done THEN
+            #MC_HALT_Instance(Axis := #Axis,
+                              Execute := FALSE);
+            #ioCM.Status.s_diStatus := 2;
+        END_IF;
+        
+END_CASE;
+
+// Global Error Catch
+IF #ioCM.Status.s_blAlarm AND #ioCM.Status.s_diStatus <> 2 THEN
+    #ioCM.Status.s_diStatus := 2;
+END_IF;
+
+#ioCM.Output.q_blInPosition := (#ioCM.Status.s_diStatus = 17 OR #ioCM.Status.s_diStatus = 21)
+AND NOT #ioCM.Output.q_blBusy;
+// HMI & Status Mapping
+#ioCM.HMI.hmi_diStatus := #ioCM.Status.s_diStatus;
+#ioCM.HMI.hmi_rlActualValue := LREAL_TO_REAL(#Axis.ActualPosition);
+
+#ioCM.Output.q_rlTarget := LREAL_TO_REAL(#Axis.ActualPosition);
+#ioCM.Output.q_rlVelocity := LREAL_TO_REAL(#Axis.Velocity);

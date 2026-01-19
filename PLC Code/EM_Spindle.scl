@@ -1,0 +1,158 @@
+// =================================================================
+// EM_Spindle
+// Implementation for Spindle Rotation Control
+// =================================================================
+
+// -----------------------------------------------------------------
+// LOCAL TAGS (Definitions)
+// -----------------------------------------------------------------
+// STATICS:
+// #LVrlStartPosition : REAL; // Tracking relative start position
+// #LVrlNormalizedPos : REAL; // 0-360 position for measurement
+//
+// TEMPS:
+// #LVrlTarget        : REAL; // Target Position
+// #LVrlVelocity      : REAL; // Target Velocity
+// #LVblStartTrigger  : BOOL; // Trigger to start
+// #LVblReturn        : BOOL; // Return trigger
+// #LVdiDriveMode     : DINT; // Drive mode (Velocity/Position)
+// #LVblRunCm         : BOOL; // Run command for CM
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioEm.Config.c_rlMaxRange := 1000.0;
+    #ioEm.Config.c_rlMinRange := 0.0;
+    #ioEm.Status.s_diStatus := 4; // Start in IDLE
+    #ioEm.Status.s_diOpMode := 0; // Default to Auto
+    #ioEm.Config.c_diDriveMode := 1;
+    #ioEm.Config.c_rlVelocity := 10.0;
+    #LVrlStartPosition := 0.0;
+    #LVrlNormalizedPos := 0.0;
+END_IF;
+
+// =================================================================
+// 2. Mode Selection
+// =================================================================
+IF #ioEm.Status.s_diOpMode = 1 THEN
+    // HAND MODE (HMI)
+    #LVrlTarget := #ioEm.HMI.hmi_rlTargetValue;
+    #LVrlVelocity := #ioEm.HMI.hmi_rlTargetVelocity;
+    #LVblStartTrigger := #ioEm.HMI.hmi_blStart;
+    #LVblReturn := #ioEm.HMI.hmi_blReturn;
+    #LVdiDriveMode := #ioEm.Config.c_diDriveMode;
+ELSE
+    // AUTO MODE (Sequence)
+    #LVrlTarget := #ioEm.Input.i_rlTargetValue; // Linked to external Unit input
+    #LVrlVelocity := #ioEm.Config.c_rlVelocity;
+    #LVblStartTrigger := #ioEm.Input.i_blRun;
+    #LVblReturn := FALSE; // FORCE FALSE: Spindle doesn't need return via CM in this mode
+    #LVdiDriveMode := #ioEm.Config.c_diDriveMode;
+END_IF;
+
+// =================================================================
+// 3. State Machine Logic
+// =================================================================
+CASE #ioEm.Status.s_diStatus OF
+    2:  // STOPPED
+        #LVblRunCm := FALSE;
+        IF #ioEm.Input.i_blReset THEN
+            #ioEm.Status.s_diStatus := 4;
+        END_IF;
+        
+    4:  // IDLE (Waiting for start)
+        #LVblRunCm := FALSE;
+        IF #LVblStartTrigger AND NOT #ioEm.Input.i_blStop THEN
+            // Reset position to 0 at start of new cycle
+            #LVrlStartPosition := #ioEm.cmSpindle.Output.q_rlTarget;
+            #LVrlNormalizedPos := 0.0;
+            #ioEm.Status.s_diStatus := 6; // To RUNNING
+        END_IF;
+        
+    6:  // RUNNING (Executing Action)
+        #LVblRunCm := TRUE;
+        
+        // Calculate normalized position (0-360) relative to start position
+        #LVrlNormalizedPos := #ioEm.cmSpindle.Output.q_rlTarget - #LVrlStartPosition;
+        
+        // Logic for dropped Run signal or Pause button
+        IF NOT #LVblStartTrigger OR #ioEm.Input.i_blPause THEN
+            #ioEm.Status.s_diStatus := 11; // To PAUSED
+        ELSIF #ioEm.cmSpindle.Output.q_blDone THEN
+            #ioEm.Status.s_diStatus := 17; // To COMPLETE
+        ELSIF #ioEm.Input.i_blStop THEN
+            #ioEm.Status.s_diStatus := 7;  // To STOPPING
+        END_IF;
+        
+    7:  // STOPPING
+        #LVblRunCm := FALSE;
+        // Wait until CM indicates it is no longer busy
+        IF NOT #ioEm.cmSpindle.Output.q_blBusy THEN
+            #ioEm.Status.s_diStatus := 2; // To STOPPED
+        END_IF;
+        
+    11: // PAUSED
+        #LVblRunCm := FALSE;
+        // Resume if Run signal returns AND pause button is off
+        IF #LVblStartTrigger AND NOT #ioEm.Input.i_blPause THEN
+            #ioEm.Status.s_diStatus := 6; // Return to RUNNING
+        ELSIF #ioEm.Input.i_blStop THEN
+            #ioEm.Status.s_diStatus := 7; // Stop directly from pause
+        END_IF;
+        
+    17: // COMPLETE
+        #LVblRunCm := FALSE;
+        
+        IF NOT #LVblStartTrigger THEN
+            #ioEm.Status.s_diStatus := 4; // Back to IDLE
+        ELSIF #ioEm.Input.i_blRestart AND #LVblStartTrigger THEN
+            // Restart with new target (for rotation correction)
+            #ioEm.Input.i_blRestart := FALSE; // Reset restart flag
+            #ioEm.Output.q_blDone := FALSE;
+            #ioEm.Status.s_diStatus := 4; // Cycle to IDLE -> RUNNING
+        END_IF;
+        
+    ELSE // Error handling / Default
+        #ioEm.Status.s_diStatus := 2;
+END_CASE;
+
+// =================================================================
+// 4. Control Module (CM) Call
+// =================================================================
+#ioEm.cmSpindle.Input.i_rlTargetValue := #LVrlTarget;
+#ioEm.cmSpindle.Input.i_rlTargetVelocity := #LVrlVelocity;
+#ioEm.cmSpindle.Input.i_blRun := #LVblRunCm;
+#ioEm.cmSpindle.Input.i_blReturn := #LVblReturn;
+#ioEm.cmSpindle.Config.c_diMode := #LVdiDriveMode;
+// Pass reset to CM
+#ioEm.cmSpindle.HMI.hmi_blReset_Alarm := #ioEm.Input.i_blReset;
+
+// Call Spindle CM
+"cmSpindle_DB"(ioCM := #ioEm.cmSpindle,
+               Axis := "Axis_Spindle");
+
+// =================================================================
+// 5. HMI & Output Mapping
+// =================================================================
+// q_rlCurrentPos is the normalized position (0-360) for measurement
+// q_rlTotalPos is the absolute position of the CM (continues accumulating)
+#LVrlCurrentPos := #LVrlNormalizedPos;
+
+"Q_Spindle_Speed" := #ioEm.cmSpindle.Output.q_rlVelocity;
+"Q_Spindle_SetPos" := #ioEm.cmSpindle.Output.q_rlTarget; // Hardware gets absolute position
+
+// Status Mapping to EM Output
+#ioEm.Output.q_blDone := (#ioEm.Status.s_diStatus = 17);
+#ioEm.Output.q_blBusy := #ioEm.cmSpindle.Output.q_blBusy OR (#ioEm.Status.s_diStatus = 11);
+#ioEm.Output.q_rlCurrentPos := #LVrlCurrentPos; // Normalized position (0-360)
+#ioEm.Output.q_rlTotalPos := #ioEm.cmSpindle.Output.q_rlTarget; // Absolute position
+
+// HMI Status Mapping
+#ioEm.HMI.hmi_rlActPos := #LVrlCurrentPos;
+#ioEm.HMI.hmi_rlAbsolutePos := #ioEm.Output.q_rlTotalPos;
+#ioEm.HMI.hmi_diStatus := #ioEm.Status.s_diStatus;
+#ioEm.HMI.hmi_diOpMode := #ioEm.Status.s_diOpMode;
+#ioEm.HMI.hmi_blBusy := #ioEm.Output.q_blBusy;
+#ioEm.HMI.hmi_blDone := #ioEm.Output.q_blDone;
+#ioEm.HMI.hmi_rlActualVelocity := #ioEm.cmSpindle.Output.q_rlVelocity;

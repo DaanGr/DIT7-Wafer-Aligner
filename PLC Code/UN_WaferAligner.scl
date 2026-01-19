@@ -1,0 +1,253 @@
+// =================================================================
+// UN_WaferAligner - Sequence Control
+// Main Unit Logic for Wafer Alignment
+// =================================================================
+
+// -----------------------------------------------------------------
+// LOCAL TAGS (Definitions)
+// -----------------------------------------------------------------
+// STATICS (State logic):
+// #LVblGoTo8       : BOOL; // Transition flag
+// #LVrlCorrectionAngle : REAL; // Calculated correction
+// 
+// TEMPS:
+// #LVblReset       : BOOL; // Pulse for reset
+// #LVblRunPos      : BOOL; // Run cmd for Positioning EM
+// #LVblReturnPos   : BOOL; // Return cmd for Positioning EM
+// #LVblRunSpindle  : BOOL; // Run cmd for Spindle EM
+// #LVblRunMeasure  : BOOL; // Run cmd for Measurement
+// #LVrlRandomAngle : REAL; // Test mode angle
+//
+// #LVblMasterRun   : BOOL; // Master run flag
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioUnit.Status.s_diStatus := 4; // Start in IDLE
+    #ioUnit.Input.i_diWaferType := 1;
+END_IF;
+
+#LVblReset := FALSE;
+IF #ioUnit.Input.i_blReset THEN
+    #LVblReset := #ioUnit.Input.i_blReset; // Detect rising edge usually? Or just pass through
+    #ioUnit.Input.i_blRun := FALSE;
+    #ioUnit.Output.q_blDone := FALSE;
+    #ioUnit.Input.i_blReset := FALSE; // Auto-reset input?
+END_IF;
+
+// =================================================================
+// 2. State Machine Logic
+// =================================================================
+CASE #ioUnit.Status.s_diStatus OF
+        
+    4: // IDLE
+        #LVblRunPos := FALSE;
+        #LVblReturnPos := FALSE;
+        #LVblRunSpindle := FALSE;
+        #LVblRunMeasure := FALSE;
+        #LVrlCorrectionAngle := 0.0;
+        #LVrlEccentricity := 0.0;
+        #LVblNotchFound := FALSE;
+        
+        IF #ioUnit.Input.i_blRun AND NOT #ioUnit.Input.i_blStop AND NOT #ioUnit.Output.q_blDone THEN
+            #ioUnit.Status.s_diStatus := 6;
+        END_IF;
+        
+        // Test Input: Select Position from "Commissioning Mode"
+        IF #ioUnit.Input.i_blSetRandomPos AND NOT #ioUnit.Input.i_blRun THEN
+            #ioUnit.Status.s_diStatus := 5;
+            
+            // Choose position based on input index (Simulate random wafers)
+            CASE #ioUnit.Input.i_diRandomPos OF
+                1:
+                    #LVrlRandomAngle := 30.5;
+                2:
+                    #LVrlRandomAngle := 90.0;
+                3:
+                    #LVrlRandomAngle := 145.2;
+                4:
+                    #LVrlRandomAngle := 210.8;
+                5:
+                    #LVrlRandomAngle := 275.5;
+                6:
+                    #LVrlRandomAngle := 330.1;
+                ELSE
+                    #LVrlRandomAngle := 10.0; // Default
+            END_CASE;
+        END_IF;
+        
+    5: // TEST: Set Spindle to "Random" position (Simulate incoming wafer angle)
+        #LVblRunPos := FALSE;
+        #LVblRunSpindle := TRUE;
+        #ioUnit.emSpindle.Config.c_rlVelocity := 36.0; // Low speed for test
+        
+        // Return to IDLE when done or input removed
+        IF NOT #ioUnit.Input.i_blSetRandomPos AND #ioUnit.emSpindle.Output.q_blDone THEN
+            #ioUnit.Status.s_diStatus := 4;
+        END_IF;
+        
+    6: // STEP 1: Position Wafer (Move X-Axis)
+        #LVblRunPos := TRUE;
+        #LVblReturnPos := FALSE;
+        
+        // Wait for InPosition stable (1s debounce)
+        "IEC_Timer_0_DB_2".TON(IN := #ioUnit.emPositioning.Output.q_blInPosition,
+                               PT := T#1S,
+                               Q => #LVblGoTo8);
+        
+        
+        // Once verified in position, proceed
+        IF #LVblGoTo8 THEN
+            #ioUnit.Status.s_diStatus := 8;
+        END_IF;
+        
+    8: // STEP 2: Spindle Action & Measurement (Rotate 360)
+        #LVblRunPos := TRUE;      // Keep X-axis active/holding
+        #LVblRunSpindle := TRUE;  // Start spindle rotation
+        #LVblRunMeasure := TRUE;  // Start measuring
+        #ioUnit.emSpindle.Config.c_rlVelocity := 3.6; // Scan speed
+        
+        // Wait for Spindle measure cycle (360 degrees) to complete
+        IF #ioUnit.emSpindle.Output.q_blDone THEN
+            #ioUnit.Status.s_diStatus := 9; // To Calculation
+        END_IF;
+        
+    9: // STEP 2b: Wait for Measurement Results
+        #LVblRunPos := TRUE;
+        #LVblRunSpindle := FALSE; // Stop spindle drive temporarily
+        #LVblRunMeasure := FALSE; // Stop measure trigger
+        
+        // Wait for calculation done
+        IF #ioUnit.emWaferMeasurement.Output.q_blDone THEN
+            // Get correction angle
+            #LVrlCorrectionAngle := #ioUnit.emWaferMeasurement.Output.q_rlRotationCorrection;
+            #LVrlEccentricity := #ioUnit.emWaferMeasurement.Output.q_rlEccentricity;
+            #LVblNotchFound := #ioUnit.emWaferMeasurement.Output.q_blNotchFound;
+            
+            // Check if correction is needed
+            IF #LVrlCorrectionAngle > 0.05 THEN // Tolerance check
+                // Trigger restart of spindle to move to correction angle
+                #ioUnit.emSpindle.Input.i_blRestart := TRUE;
+                #ioUnit.Status.s_diStatus := 11; // To Execution
+            ELSE
+                // No correction needed, done
+                #ioUnit.Status.s_diStatus := 10;
+            END_IF;
+        END_IF;
+        
+    11: // STEP 3: Execute Rotation Correction
+        #LVblRunPos := TRUE;
+        #LVblRunSpindle := TRUE; // Start spindle with correction target
+        #LVblRunMeasure := FALSE;
+        #ioUnit.emSpindle.Config.c_rlVelocity := 10.0; // Correction speed
+        
+        // Wait for move compliance
+        IF #ioUnit.emSpindle.Output.q_blDone THEN
+            #ioUnit.Status.s_diStatus := 10; // To Return
+        END_IF;
+        
+    10: // STEP 4: Return X-Axis to Zero (Unload)
+        #LVblRunPos := TRUE;
+        #LVblReturnPos := TRUE;   // Trigger return logic in EM
+        #LVblRunSpindle := FALSE;
+        
+        // Wait for Positioning Done (Home Logic)
+        IF #ioUnit.emPositioning.Output.q_blDone AND #ioUnit.emPositioning.Output.q_blHomePosition THEN
+            #ioUnit.Status.s_diStatus := 17;
+        END_IF;
+        
+    17: // SEQUENCE COMPLETE
+        #LVblRunPos := FALSE;
+        #LVblReturnPos := FALSE;
+        #ioUnit.Output.q_blDone := TRUE;
+        
+        IF NOT #ioUnit.Input.i_blRun THEN
+            #ioUnit.Status.s_diStatus := 4; // Reset to IDLE
+        END_IF;
+        
+    7: // STOPPING: E-Stop or Interruption
+        #LVblRunPos := FALSE;
+        #LVblRunSpindle := FALSE;
+        IF NOT #ioUnit.emPositioning.Output.q_blBusy AND NOT #ioUnit.emSpindle.Output.q_blBusy THEN
+            #ioUnit.Status.s_diStatus := 4;
+        END_IF;
+        
+END_CASE;
+
+// =================================================================
+// 3. Error / Stop Handling
+// =================================================================
+IF #ioUnit.Input.i_blStop AND #ioUnit.Status.s_diStatus <> 7 THEN
+    #ioUnit.Status.s_diStatus := 7;
+END_IF;
+
+// =================================================================
+// 4. Equipment Module Input Mapping
+// =================================================================
+// Master Run: If Unit runs, EMs run (unless stopped/manual override elsewhere)
+#LVblMasterRun := #ioUnit.Input.i_blRun AND (#ioUnit.Status.s_diStatus >= 6 AND #ioUnit.Status.s_diStatus <= 11);
+
+#ioUnit.emPositioning.Input.i_blRun := #LVblRunPos AND #LVblMasterRun;
+#ioUnit.emPositioning.Input.i_blReturn := #LVblReturnPos;
+#ioUnit.emPositioning.Input.i_diWaferType := #ioUnit.Input.i_diWaferType;
+#ioUnit.emPositioning.Input.i_blStop := #ioUnit.Input.i_blStop;
+#ioUnit.emPositioning.Input.i_blReset := #LVblReset;
+
+// Allow Spindle to run in Test Mode (State 5)
+#ioUnit.emSpindle.Input.i_blRun := #LVblRunSpindle AND (#LVblMasterRun OR #ioUnit.Status.s_diStatus = 5);
+#ioUnit.emSpindle.Input.i_blStop := #ioUnit.Input.i_blStop;
+#ioUnit.emSpindle.Input.i_blReset := #LVblReset;
+
+// Update Target input of Spindle
+IF #ioUnit.Status.s_diStatus = 11 THEN
+    // Correction: Rotate delta to 0
+    #ioUnit.emSpindle.Input.i_rlTargetValue := #LVrlCorrectionAngle;
+ELSIF #ioUnit.Status.s_diStatus = 5 THEN
+    // Test: Go to random pos
+    #ioUnit.emSpindle.Input.i_rlTargetValue := #LVrlRandomAngle;
+ELSE
+    #ioUnit.emSpindle.Input.i_rlTargetValue := 360.0; // Default scan full rotation
+END_IF;
+
+// Mapping to Measurement EM
+#ioUnit.emWaferMeasurement.Input.i_blRun := #LVblRunMeasure AND #LVblMasterRun;
+#ioUnit.emWaferMeasurement.Input.i_rlSpindlePos := #ioUnit.emSpindle.Output.q_rlCurrentPos; // Feedback loop
+#ioUnit.emWaferMeasurement.Input.i_blReset := #LVblReset;
+
+// =================================================================
+// 5. Equipment Module Calls
+// =================================================================
+"emPositioning_DB"(#ioUnit.emPositioning);
+"emSpindle_DB"(#ioUnit.emSpindle);
+"emWaferMeasurement_DB"(#ioUnit.emWaferMeasurement);
+
+// =================================================================
+// 6. Output & HMI Mapping
+// =================================================================
+// HMI Request Wafer
+IF #ioUnit.HMI.hmi_blRequestWafer THEN
+    #ioUnit.Output.q_blRequestWafer := TRUE;
+    #ioUnit.HMI.hmi_blRequestWafer := FALSE; // Reset button
+ELSE
+    #ioUnit.Output.q_blRequestWafer := FALSE;
+END_IF;
+
+IF #ioUnit.HMI.hmi_blClearWafer THEN
+    #ioUnit.Output.q_blClearWafer := TRUE;
+    #ioUnit.HMI.hmi_blClearWafer := FALSE; // Reset button
+ELSE
+    #ioUnit.Output.q_blClearWafer := FALSE;
+END_IF;
+
+#ioUnit.Output.q_blBusy := (#ioUnit.Status.s_diStatus >= 6 AND #ioUnit.Status.s_diStatus <= 11);
+#ioUnit.Output.q_diActualStep := #ioUnit.Status.s_diStatus;
+
+// HMI Output Mapping
+#ioUnit.HMI.hmi_diStatus := #ioUnit.Status.s_diStatus;
+#ioUnit.HMI.hmi_blBusy := #ioUnit.Output.q_blBusy;
+#ioUnit.HMI.hmi_blDone := #ioUnit.Output.q_blDone;
+#ioUnit.HMI.hmi_rlCorrectionAngle := #LVrlCorrectionAngle;
+#ioUnit.HMI.hmi_blNotchDetected := #LVblNotchFound;
+#ioUnit.HMI.hmi_rlEccentricity := #LVrlEccentricity;
+

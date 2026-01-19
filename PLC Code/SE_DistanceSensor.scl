@@ -1,0 +1,55 @@
+// =================================================================
+// SE_DistanceSensor
+// Distance Sensor Control Module
+// =================================================================
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioSE.Config.c_rlMinRange := 0.0;
+    #ioSE.Config.c_rlMaxRange := 200.0;
+    #ioSE.Config.c_rlThreshold_OK := 10.0;
+    #ioSE.Status.s_blAlarm := FALSE;
+    #ioSE.Status.s_diStatus := 4; // Start in IDLE
+END_IF;
+
+// =================================================================
+// 2. State Machine Logic
+// =================================================================
+CASE #ioSE.Status.s_diStatus OF
+        
+    2: // STOPPED: Waiting for reset
+        IF #LVblResetAlarm THEN
+            #ioSE.Status.s_blAlarm := FALSE;
+            #ioSE.HMI.hmi_blReset_Alarm := FALSE;
+            #ioSE.Status.s_diStatus := 4; // Back to IDLE
+        END_IF;
+        
+    4: // IDLE: Waiting for start (or directly to Running if sensor is always on)
+        #ioSE.Status.s_blAlarm := FALSE;
+        #ioSE.Status.s_diStatus := 6; // Go to RUNNING
+        
+    6: // RUNNING: Active measurement
+        #LVrlDistance := #ioSE.Input.i_rlDistance_mm;
+        
+        // Check limit values
+        IF (#LVrlDistance < #ioSE.Config.c_rlMinRange) OR (#LVrlDistance > #ioSE.Config.c_rlMaxRange) THEN
+            #ioSE.Status.s_diStatus := 7; // Go to STOPPING (Transient state)
+        ELSE
+            #ioSE.Output.q_rlDistance_mm := #LVrlDistance;
+        END_IF;
+        
+    7: // STOPPING: Set alarm and shutdown
+        #ioSE.Status.s_blAlarm := TRUE;
+        #ioSE.Output.q_rlDistance_mm := 0.0; // Safety value
+        #ioSE.Status.s_diStatus := 2; // Go to STOPPED (Quiescent state)
+        
+END_CASE;
+
+// =================================================================
+// 3. HMI
+// =================================================================
+#LVblResetAlarm := #ioSE.HMI.hmi_blReset_Alarm;
+#ioSE.HMI.hmi_rlActDistance := #LVrlDistance;
+#ioSE.HMI.hmi_diStatus := #ioSE.Status.s_diStatus;

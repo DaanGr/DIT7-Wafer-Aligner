@@ -1,0 +1,220 @@
+// =================================================================
+// EM_Positioning
+// Positioning of the Wafer (Loading/Unloading Axis)
+// =================================================================
+
+// -----------------------------------------------------------------
+// LOCAL TAGS (Definitions)
+// -----------------------------------------------------------------
+// STATICS:
+// #LVrlHomePosSensor : REAL; // Sensor position for Home check
+//
+// TEMPS:
+// #LVrlTargetPos     : REAL; // Target position for current move
+// #LVrlSpeed         : REAL; // Target speed for current move
+// #LVblStartTrigger  : BOOL; // Trigger to start move
+// #LVblReturn        : BOOL; // Trigger to return
+// #LVblRunCm         : BOOL; // Run command for CM
+// #LVblGrip          : BOOL; // Grip command from mode selection
+// #LVblRelease       : BOOL; // Release command from mode selection
+// #LVrlExpectedDist  : REAL; // Calculated distance
+// #LVrlActualDist    : REAL; // Measured distance
+// #LVblPosVerified   : BOOL; // Position verification result
+// #LVrlCurrentPos    : REAL; // Current actual position
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioEM.Config.c_rlPos1 := 10.0;  // 300mm wafer
+    #ioEM.Config.c_rlPos2 := 60.0;  // 200mm wafer
+    #ioEM.Config.c_rlPos3 := 75.0;  // 150mm wafer
+    #ioEM.Config.c_rlSpeed := 30.0;
+    #ioEM.Status.s_diStatus := 4;   // Start in IDLE
+    #ioEM.Status.s_diOpMode := 0;   // Default to Auto
+END_IF;
+
+#LVrlHomePosSensor := 141.975; // Pre-calibrated home sensor pos
+
+// =================================================================
+// 2. Mode Selection
+// =================================================================
+IF #ioEM.Status.s_diOpMode = 1 THEN
+    // HAND MODE (HMI Control)
+    // Map HMI tags to local control variables
+    #LVrlTargetPos := #ioEM.HMI.hmi_rlTargetPos;
+    #LVrlSpeed := #ioEM.HMI.hmi_rlSpeed;
+    #LVblStartTrigger := #ioEM.HMI.hmi_blStart;
+    #LVblReturn := #ioEM.HMI.hmi_blReturn;
+    
+    // Manual Chuck Controls from HMI
+    #LVblGrip := #ioEM.HMI.hmi_blManualGrip;
+    #LVblRelease := #ioEM.HMI.hmi_blManualRelease;
+    
+ELSE
+    // AUTO MODE (Sequence Control)
+    CASE #ioEM.Input.i_diWaferType OF
+        1:
+            #LVrlTargetPos := #ioEM.Config.c_rlPos1;
+        2:
+            #LVrlTargetPos := #ioEM.Config.c_rlPos2;
+        3:
+            #LVrlTargetPos := #ioEM.Config.c_rlPos3;
+        ELSE
+            #LVrlTargetPos := 0.0;
+    END_CASE;
+    
+    #LVrlSpeed := #ioEM.Config.c_rlSpeed;
+    #LVblStartTrigger := #ioEM.Input.i_blRun; // Run command from Unit
+    #LVblReturn := #ioEM.Input.i_blReturn;
+END_IF;
+
+// =================================================================
+// 3. State Machine Logic
+// =================================================================
+CASE #ioEM.Status.s_diStatus OF
+    2:  // STOPPED
+        #LVblRunCm := FALSE;
+        
+        #LVblGrip := FALSE;
+        #LVblRelease := FALSE;
+        IF #ioEM.Input.i_blReset THEN
+            #ioEM.Status.s_diStatus := 4; // Return to IDLE
+        END_IF;
+        
+    4:  // IDLE (Waiting for start)
+        #LVblRunCm := FALSE;
+        
+        #LVblGrip := FALSE;
+        #LVblRelease := FALSE;
+        // Start only if trigger is present and no stop
+        IF #LVblStartTrigger AND NOT #ioEM.Input.i_blStop THEN
+            #ioEM.Status.s_diStatus := 6; // To RUNNING
+        END_IF;
+        
+    6:  // RUNNING (Executing Movement)
+        // A. Ensure Grip
+        #LVblGrip := TRUE;
+        #LVblRelease := FALSE;
+        
+        // B. Check Grip before moving
+        IF #ioEM.cmChuck.Output.q_blHasGrip THEN
+            #LVblRunCm := TRUE;
+        ELSE
+            #LVblRunCm := FALSE;
+            // Wait for grip...
+        END_IF;
+        
+        // Exit Conditions
+        IF NOT #LVblStartTrigger OR #ioEM.Input.i_blPause THEN
+            #ioEM.Status.s_diStatus := 11; // To PAUSED
+        ELSIF #ioEM.cmPositioning.Output.q_blDone THEN
+            // Motion done
+            #ioEM.Status.s_diStatus := 17; // To COMPLETE
+        ELSIF #ioEM.Input.i_blStop THEN
+            #ioEM.Status.s_diStatus := 7;  // To STOPPING
+        END_IF;
+        
+    7:  // STOPPING
+        #LVblRunCm := FALSE;
+        #LVblGrip := TRUE; // Maintain grip
+        #LVblRelease := FALSE;
+        
+        IF NOT #ioEM.cmPositioning.Output.q_blBusy THEN
+            #ioEM.Status.s_diStatus := 2; // To STOPPED
+        END_IF;
+        
+    11: // PAUSED
+        #LVblRunCm := FALSE;
+        #LVblGrip := TRUE; // Maintain grip
+        #LVblRelease := FALSE;
+        
+        IF #LVblStartTrigger AND NOT #ioEM.Input.i_blPause THEN
+            #ioEM.Status.s_diStatus := 6; // Resume to RUNNING
+        ELSIF #ioEM.Input.i_blStop THEN
+            #ioEM.Status.s_diStatus := 7; // Stop from pause
+        END_IF;
+        
+    17: // COMPLETE
+        #LVblRunCm := FALSE;
+        #LVblGrip := TRUE; // Hold at end position
+        #LVblRelease := FALSE;
+        
+        IF NOT #LVblStartTrigger THEN
+            #ioEM.Status.s_diStatus := 4; // Back to IDLE
+        END_IF;
+        
+    3: // ABORTING
+        #LVblRunCm := FALSE;
+        #LVblGrip := TRUE;
+        #LVblRelease := FALSE;
+        #ioEM.Status.s_diStatus := 2;
+        
+    ELSE // Default / Error Handling
+        #LVblGrip := FALSE;
+        #LVblRelease := TRUE;
+        #ioEM.Status.s_diStatus := 2;
+END_CASE;
+
+// =================================================================
+// 4. Control Module (CM) Call
+// =================================================================
+// Distance Sensor (Position Verification)
+#ioEM.seDistanceSensor.Input.i_rlDistance_mm := "I_Spindle_Case_ActPos";
+#ioEM.seDistanceSensor.HMI.hmi_blReset_Alarm := #ioEM.Input.i_blReset;
+"SE_DistanceSensor"(#ioEM.seDistanceSensor);
+
+// Check if Position is Verified (Tolerance 1.0mm)
+#LVrlExpectedDist := #LVrlHomePosSensor - #LVrlTargetPos;
+#LVrlActualDist := #ioEM.seDistanceSensor.Output.q_rlDistance_mm;
+
+#LVblPosVerified := ABS(#LVrlExpectedDist - #LVrlActualDist) < 1.0;
+
+// Chuck Control
+#ioEM.cmChuck.Input.i_blHasGripSensor := "I_Chuck_HasGrip";
+#ioEM.cmChuck.Input.i_blGrip := #LVblGrip;
+#ioEM.cmChuck.Input.i_blRelease := #LVblRelease;
+
+"cmChuckSuction_DB"(#ioEM.cmChuck);
+
+// Positioning CM (Move Absolute)
+#ioEM.cmPositioning.Input.i_rlTargetValue := #LVrlTargetPos;
+#ioEM.cmPositioning.Input.i_rlTargetVelocity := #LVrlSpeed;
+#ioEM.cmPositioning.Input.i_blRun := #LVblRunCm;
+#ioEM.cmPositioning.HMI.hmi_blReset_Alarm := #ioEM.Input.i_blReset;
+#ioEM.cmPositioning.Input.i_blReturn := #LVblReturn;
+
+// Call the CMs
+"cmSliding_DB"(ioCM := #ioEM.cmPositioning,
+               Axis := "Axis_Sliding");
+
+// =================================================================
+// 5. HMI
+// =================================================================
+#LVrlCurrentPos := #ioEM.cmPositioning.Output.q_rlTarget; // Note: Should this be q_rlActPos?
+
+#ioEM.Status.s_diStatus := #ioEM.Status.s_diStatus;
+#ioEM.Output.q_blDone := (#ioEM.Status.s_diStatus = 17);
+#ioEM.Output.q_blBusy := #ioEM.cmPositioning.Output.q_blBusy OR (#ioEM.Status.s_diStatus = 11);
+#ioEM.Output.q_rlCurrentPos := #LVrlCurrentPos;
+#ioEM.Output.q_blInPosition := #LVblPosVerified;
+#ioEM.Output.q_blHomePosition := (#LVrlHomePosSensor = #LVrlActualDist);
+
+// Write to Hardware/Global tags
+"Q_Spindle_Case_SetPos" := #LVrlCurrentPos;
+"Q_Spindle_Case_Move_Speed" := #LVrlSpeed;
+"Q_Chuck_Grip" := #ioEM.cmChuck.Output.q_blGripValve;
+"Q_Chuck_Release" := #ioEM.cmChuck.Output.q_blReleaseValve;
+
+// HMI Data
+#ioEM.HMI.hmi_rlActualPos := #LVrlCurrentPos;
+#ioEM.HMI.hmi_diStatus := #ioEM.Status.s_diStatus;
+#ioEM.HMI.hmi_diOpMode := #ioEM.Status.s_diOpMode;
+#ioEM.HMI.hmi_blBusy := #ioEM.Output.q_blBusy;
+#ioEM.HMI.hmi_blDone := #ioEM.Output.q_blDone;
+#ioEM.HMI.hmi_blInPosition := #ioEM.Output.q_blInPosition;
+#ioEM.HMI.hmi_blHomePosition := #ioEM.Output.q_blHomePosition;
+#ioEM.HMI.hmi_blHasGrip := #ioEM.cmChuck.Output.q_blHasGrip;
+#ioEM.HMI.hmi_rlExpectedDist := #LVrlExpectedDist;
+#ioEM.HMI.hmi_rlActualDist := #LVrlActualDist;
+#ioEM.HMI.hmi_blPosVerified := #LVblPosVerified;

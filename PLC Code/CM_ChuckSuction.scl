@@ -1,0 +1,36 @@
+// =================================================================
+// CM_ChuckSuction
+// Control Module for Vacuum Chuck (Grip/Release)
+// =================================================================
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    #ioCm.Status.s_diStatus := 4; // IDLE
+END_IF;
+
+// =================================================================
+// 2. Control Logic
+// =================================================================
+// We use simple logic: Grip command overrides Release.
+// If Grip is requested, we turn on Vacuum.
+// If Release is requested (and no Grip), we turn on Blow-off/Release.
+
+IF #ioCm.Input.i_blGrip THEN
+    #ioCm.Output.q_blGripValve := TRUE;
+    #ioCm.Output.q_blReleaseValve := FALSE;
+ELSIF #ioCm.Input.i_blRelease THEN
+    #ioCm.Output.q_blGripValve := FALSE;
+    #ioCm.Output.q_blReleaseValve := TRUE;
+ELSE
+    // No action: valves closed (or maintain state, depending on type)
+    // Here we choose safe: off
+    #ioCm.Output.q_blGripValve := FALSE;
+    #ioCm.Output.q_blReleaseValve := FALSE;
+END_IF;
+
+// =================================================================
+// 3. Status Feedback
+// =================================================================
+#ioCm.Output.q_blHasGrip := #ioCm.Input.i_blHasGripSensor;
