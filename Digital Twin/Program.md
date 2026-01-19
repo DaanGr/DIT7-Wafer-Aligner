@@ -1,4 +1,4 @@
- ``` mermaid 
+``` mermaid 
 graph TD
     %% Start en Initialisatie
     Start([Start Commando]) --> Init[UN: Initialiseer Systeem]
