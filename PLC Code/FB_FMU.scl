@@ -1,0 +1,19 @@
+// =================================================================
+// FB_FMU
+// Function Block for FMU (Functional Mock-up Unit) integration
+// =================================================================
+
+// =================================================================
+// 1. Initialization
+// =================================================================
+IF "FirstScan" THEN
+    ; // No initialization required currently
+END_IF;
+
+// =================================================================
+// 2. Signal Mapping
+// =================================================================
+"Q_Wafer_Type" := DINT_TO_INT(#ioFMU.Input.i_diWaferType);
+
+#ioFMU.Output.q_blSlipAlarm := "I_Slip_Alarm";
+#ioFMU.Output.q_rlSlipFactor := "I_Slip_Factor";

@@ -560,73 +560,47 @@ python test_fmu.py
 
 ---
 
-## 6. FMU INTEGRATION WITH SIEMENS NX MCD
+## 6. FMU INTEGRATION STRATEGY
 
-### 6.1 Integration Pathway
+### 6.1 Architecture Overview
+To integrate the Python-based FMU into the Digital Twin without external OPC UA servers, we utilize **Siemens NX MCD** as the hosting environment. The PLC (TIA Portal) communicates with the FMU indirectly via PLCSim Advanced tags mapped to MCD signals.
 
-**Option A: Direct FMU Import (if supported)**
-1. In Siemens NX MCD, navigate to FMU import function
-2. Select `WaferSlipDynamics.fmu`
-3. Map FMU inputs to simulation signals
-4. Map FMU outputs to alarm/display systems
+**Data Flow:** `PLC Logic` ↔ `UDT Simulation Interface` ↔ `PLCSim Advanced` ↔ `NX MCD Signals` ↔ `FMU`
 
-**Option B: PLCSim Advanced Integration**
-1. Use TIA Portal PLCSim Advanced
-2. Create OPC UA server for FMU
-3. Link FMU outputs to PLC tags
-4. Trigger alarms in TIA Portal when `is_slipping = TRUE`
+### 6.2 PLC Implementation (FB & UDT)
+To maintain project standards, the FMU bridge is encapsulated in a Function Block (`FB_FMU_Bridge`) using a single Unified Data Type (`UDT_FMU_Data`).
 
-### 6.2 Signal Mapping Table
+**1. Data Structure (`UDT_FMU_Data`)**
+This UDT serves as the single source of truth, separating internal logic from simulation I/O.
 
-| FMU Input | TIA Portal Source | Connection Method |
-|-----------|-------------------|-------------------|
-| `angular_acceleration` | Calculated from `EM_Spindle.Output.q_rlVelocity` (derivative) | OPC UA / Signal mapping |
-| `vacuum_pressure` | `I_Chuck_Vacuum_Pressure` (sensor) | Direct tag read |
-| `wafer_type` | `UN_WaferAligner.Input.i_diWaferType` | Configuration tag |
+| Section        | Tag Name            | Type | Description                                              |
+| :------------- | :------------------ | :--- | :------------------------------------------------------- |
+| **Input**      |                     |      |                                                          |
+|                | `i_blVacuumActive`  | Bool | Input from Vacuum Sensor                                 |
+|                | `i_diWaferType`     | DInt | Input from Unit Config                                   |
+| **Output**     | `q_blSlipAlarm`     | Bool | Processed result for Sequencer                           |
+|                | `q_rlSlipFactor`    | Real | Processed result for HMI                                 |
+| **Simulation** | `i_rlAccel_FromMCD` | Real | **[Mapped to MCD]** Accel measured in NX and sent to PLC |
+|                | `q_blVac_ToMCD`     | Bool | **[Mapped to MCD]** Vac State sent to FMU                |
+|                | `q_diWafer_ToMCD`   | DInt | **[Mapped to MCD]** Wafer Type sent to FMU               |
+|                | `i_blAlarm_FromMCD` | Bool | **[Mapped to MCD]** Alarm received from FMU              |
+|                | `i_rlSlip_FromMCD`  | Real | **[Mapped to MCD]** Slip Factor received from FMU        |
+|                | `q_rlAccel_ToMCD`   | Real | **[Mapped to MCD]** Accel measured in NX and sent to FMU |
 
-| FMU Output | TIA Portal Destination | Action |
-|------------|------------------------|--------|
-| `slip_factor` | HMI display tag | Monitoring |
-| `max_safe_acceleration` | Motion profile limiter | Velocity override |
-| `is_slipping` | Alarm tag | Trigger "Position Error" alarm |
+### 6.3 NX MCD Configuration & Mapping
+1.  **Import FMU:** Load `WaferSlipDynamics.fmu` into NX MCD via the "External Source" or "Runtime Behavior" command.
+2.  **Signal Mapping:** Map the specific `Simulation` tags from the UDT to the FMU ports using the Signal Mapping editor.
 
-### 6.3 Integration Code Example (TIA Portal SCL)
+| PLC Tag (DB_Sim)                     | Direction | MCD Signal Name | FMU Port (Variable)    |
+| :----------------------------------- | :-------: | :-------------- | :--------------------- |
+| `ioFMU.Simulation.q_rlAccel_ToMCD`   |     →     | `Sig_In_Accel`  | `angular_acceleration` |
+| `ioFMU.Simulation.q_blVac_ToMCD`     |     →     | `Sig_In_Vac`    | `vacuum_active`        |
+| `ioFMU.Simulation.q_diWafer_ToMCD`   |     →     | `Sig_In_Type`   | `wafer_type`           |
+| `ioFMU.Simulation.i_blAlarm_FromMCD` |     ←     | `Sig_Out_Alarm` | `is_slipping`          |
+| `ioFMU.Simulation.i_rlSlip_FromMCD`  |     ←     | `Sig_Out_Slip`  | `slip_factor`          |
+| `ioFMU.Simulation.i_rlAccel_FromMCD` |     ←     |                 |                        |
 
-Add to `UN_WaferAligner.scl` or create new FB:
-
-```scl
-// =================================================================
-// FMU Interface Block (Pseudo-code for integration)
-// =================================================================
-
-// Local variables
-#LVrlPreviousVelocity : REAL; // For acceleration calculation
-#LVrlCurrentVelocity : REAL;
-#LVrlDeltaTime : REAL := 0.01; // 10ms cycle time
-#LVrlAcceleration : REAL;
-
-// Calculate acceleration from velocity change
-#LVrlCurrentVelocity := #ioUnit.emSpindle.Output.q_rlVelocity;
-#LVrlAcceleration := (#LVrlCurrentVelocity - #LVrlPreviousVelocity) / #LVrlDeltaTime;
-#LVrlPreviousVelocity := #LVrlCurrentVelocity;
-
-// Write to FMU inputs (via OPC UA or similar)
-"FMU_Input_Acceleration" := #LVrlAcceleration;
-"FMU_Input_VacuumPressure" := "I_Chuck_Vacuum_Pressure";
-"FMU_Input_WaferType" := #ioUnit.Input.i_diWaferType;
-
-// Read from FMU outputs
-#ioUnit.HMI.hmi_rlSlipFactor := "FMU_Output_SlipFactor";
-#ioUnit.HMI.hmi_blSlipAlarm := "FMU_Output_IsSlipping";
-
-// Trigger alarm if slipping detected
-IF "FMU_Output_IsSlipping" THEN
-    // Set alarm bit
-    #ioUnit.Status.s_blSlipAlarm := TRUE;
-    // Optional: Emergency stop
-    #ioUnit.Input.i_blStop := TRUE;
-END_IF;
-```
+This structure ensures that `ioFMU` acts as the single source of truth for all FMU-related data, consistent with the `ioUnit` and `ioEM` patterns used in the rest of the project.
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "Cy0cFb1m15U=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\daang\\School\\DIT7\\DIT7 Wafer Aligner\\FMU\\FMU.NET\\FMU.NET.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\daang\\.nuget\\packages\\unmanagedexports\\1.2.7\\unmanagedexports.1.2.7.nupkg.sha512"
+  ],
+  "logs": []
+}

@@ -107,16 +107,16 @@ While there is no fixed page limit, the document must be easily readable, well-s
 
 The document must be easily readable, well-structured, and focused. Avoid irrelevant details or simply dumping large files of data without analysis.
 
-| Section No. | Report Section Heading | Responsibility |
-|-------------|------------------------|----------------|
-| Title Page | Title, Authors, and Unit Assignments | Group |
-| 1. | Introduction | Group |
-| 2. | Project Background & Scope (Group) | Group |
-| 3. | System-Level Requirements & Architecture (Group) | Group |
-| 4. | Unit Specification & NX Modelling Details (Individual: Unit) | Individual |
-| 5. | Control/Automation Code Overview (Individual: Unit) | Individual |
-| 6. | Testing: Comprehensive Coverage<br>6.1 Unit Testing & Verification (Individual: Unit)<br>6.2 System Integration Testing & Validation (Group) |Mixed |
-| 7. | FMU Background, Implementation, Tests, and Integration (Individual: FMU) | Individual |
-| 8. | Conclusions & Lessons Learned | Group |
-| 9. | References/Appendices | Mixed |
+| Section No. | Report Section Heading                                                                                                                       | Responsibility |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Title Page  | Title, Authors, and Unit Assignments                                                                                                         | Group          |
+| 1.          | Introduction                                                                                                                                 | Group          |
+| 2.          | Project Background & Scope (Group)                                                                                                           | Group          |
+| 3.          | System-Level Requirements & Architecture (Group)                                                                                             | Group          |
+| 4.          | Unit Specification & NX Modelling Details (Individual: Unit)                                                                                 | Individual     |
+| 5.          | Control/Automation Code Overview (Individual: Unit)                                                                                          | Individual     |
+| 6.          | Testing: Comprehensive Coverage<br>6.1 Unit Testing & Verification (Individual: Unit)<br>6.2 System Integration Testing & Validation (Group) | Mixed          |
+| 7.          | FMU Background, Implementation, Tests, and Integration (Individual: FMU)                                                                     | Individual     |
+| 8.          | Conclusions & Lessons Learned                                                                                                                | Group          |
+| 9.          | References/Appendices                                                                                                                        | Mixed          |
 

@@ -215,12 +215,16 @@ END_IF;
 #ioUnit.emWaferMeasurement.Input.i_rlSpindlePos := #ioUnit.emSpindle.Output.q_rlCurrentPos; // Feedback loop
 #ioUnit.emWaferMeasurement.Input.i_blReset := #LVblReset;
 
+// Mapping to FMU
+#ioUnit.fbFMU.Input.i_diWaferType := #ioUnit.Input.i_diWaferType;
+
 // =================================================================
-// 5. Equipment Module Calls
+// 5. Module Calls
 // =================================================================
 "emPositioning_DB"(#ioUnit.emPositioning);
 "emSpindle_DB"(#ioUnit.emSpindle);
 "emWaferMeasurement_DB"(#ioUnit.emWaferMeasurement);
+"FB_FMU"(#ioUnit.fbFMU);
 
 // =================================================================
 // 6. Output & HMI Mapping
@@ -243,6 +247,10 @@ END_IF;
 #ioUnit.Output.q_blBusy := (#ioUnit.Status.s_diStatus >= 6 AND #ioUnit.Status.s_diStatus <= 11);
 #ioUnit.Output.q_diActualStep := #ioUnit.Status.s_diStatus;
 
+// Mapping to FMU Outputs  
+#ioUnit.Status.s_blSlipAlarm := #ioUnit.fbFMU.Output.q_blSlipAlarm;
+#ioUnit.Status.s_rlSlipFactor := #ioUnit.fbFMU.Output.q_rlSlipFactor;
+
 // HMI Output Mapping
 #ioUnit.HMI.hmi_diStatus := #ioUnit.Status.s_diStatus;
 #ioUnit.HMI.hmi_blBusy := #ioUnit.Output.q_blBusy;
@@ -250,4 +258,6 @@ END_IF;
 #ioUnit.HMI.hmi_rlCorrectionAngle := #LVrlCorrectionAngle;
 #ioUnit.HMI.hmi_blNotchDetected := #LVblNotchFound;
 #ioUnit.HMI.hmi_rlEccentricity := #LVrlEccentricity;
+#ioUnit.HMI.hmi_rlSlipFactor := #ioUnit.Status.s_rlSlipFactor;
+#ioUnit.HMI.hmi_blSlipAlarm := #ioUnit.Status.s_blSlipAlarm;
 

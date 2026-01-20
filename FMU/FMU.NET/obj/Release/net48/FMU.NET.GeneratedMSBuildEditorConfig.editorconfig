@@ -1,0 +1,8 @@
+is_global = true
+build_property.RootNamespace = FMU.NET
+build_property.ProjectDir = C:\Users\daang\School\DIT7\DIT7 Wafer Aligner\FMU\FMU.NET\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.CsWinRTUseWindowsUIXamlProjections = false
+build_property.EffectiveAnalysisLevelStyle = 
+build_property.EnableCodeStyleSeverity = 

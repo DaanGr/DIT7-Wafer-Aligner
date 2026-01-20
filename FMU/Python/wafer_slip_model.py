@@ -23,7 +23,7 @@ class WaferSlipDynamics(Fmi2Slave):
         # ==================== INPUT VARIABLES ====================
         # From TIA Portal / Simulation
         self.angular_acceleration = 0.0  # rad/s² - Spindle acceleration
-        self.vacuum_pressure = 0.0       # Pa - Vacuum pressure (absolute)
+        self.vacuum_active = False       # Boolean - Vacuum ON/OFF
         self.wafer_type = 1              # Integer: 1=300mm, 2=200mm, 3=150mm
         
         # ==================== OUTPUT VARIABLES ====================
@@ -34,6 +34,7 @@ class WaferSlipDynamics(Fmi2Slave):
         # ==================== PARAMETERS (CONSTANTS) ====================
         self.mu_friction = 0.6           # Coefficient of friction (rubber/silicon)
         self.safety_margin = 0.85        # Safety factor (trigger at 85% of limit)
+        self.nominal_vacuum_pressure = 53000.0 # Pa - Pressure when vacuum is ON
         
         # ==================== INTERNAL STATE ====================
         self.wafer_mass = 0.125          # kg
@@ -48,9 +49,9 @@ class WaferSlipDynamics(Fmi2Slave):
                                causality=Fmi2Causality.input,
                                variability=Fmi2Variability.continuous))
         
-        self.register_variable(Real("vacuum_pressure", 
+        self.register_variable(Boolean("vacuum_active", 
                                causality=Fmi2Causality.input,
-                               variability=Fmi2Variability.continuous))
+                               variability=Fmi2Variability.discrete))
         
         self.register_variable(Integer("wafer_type", 
                                causality=Fmi2Causality.input,
@@ -75,6 +76,10 @@ class WaferSlipDynamics(Fmi2Slave):
         self.register_variable(Real("safety_margin", 
                                causality=Fmi2Causality.parameter,
                                variability=Fmi2Variability.fixed))
+                               
+        self.register_variable(Real("nominal_vacuum_pressure", 
+                               causality=Fmi2Causality.parameter,
+                               variability=Fmi2Variability.tunable))
     
     def _update_wafer_properties(self):
         """Update wafer physical properties based on wafer type"""
@@ -114,10 +119,11 @@ class WaferSlipDynamics(Fmi2Slave):
         
         # Calculate friction force (holding force)
         # F_friction = μ × (P_vac × A_chuck)
-        # Note: vacuum_pressure should be gauge pressure (negative)
-        # Convert to absolute pressure difference
-        pressure_diff = abs(self.vacuum_pressure)
-        friction_force = self.mu_friction * (pressure_diff * self.chuck_area)
+        
+        # Determining pressure based on digital input
+        pressure = self.nominal_vacuum_pressure if self.vacuum_active else 0.0
+        
+        friction_force = self.mu_friction * (pressure * self.chuck_area)
         
         # Calculate inertial force (tangential force at wafer edge)
         # F_inertial = m × r × α
