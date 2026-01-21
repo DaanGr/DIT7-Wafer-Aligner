@@ -50,7 +50,8 @@ CASE #ioUnit.Status.s_diStatus OF
         #LVrlEccentricity := 0.0;
         #LVblNotchFound := FALSE;
         
-        IF #ioUnit.Input.i_blRun AND NOT #ioUnit.Input.i_blStop AND NOT #ioUnit.Output.q_blDone THEN
+        // Start Condition: Manual Run OR Interface Start (E84 Handshake)
+        IF (#ioUnit.Input.i_blRun OR #ioUnit.fbInterface.Output.q_blStartAutoCycle) AND NOT #ioUnit.Input.i_blStop AND NOT #ioUnit.Output.q_blDone THEN
             #ioUnit.Status.s_diStatus := 6;
         END_IF;
         
@@ -178,15 +179,23 @@ END_CASE;
 // =================================================================
 // 3. Error / Stop Handling
 // =================================================================
-IF #ioUnit.Input.i_blStop AND #ioUnit.Status.s_diStatus <> 7 THEN
+// Added protection against FMU Slip Alarm (Only active in motion steps 6 and 8)
+IF (#ioUnit.Input.i_blStop OR (#ioUnit.fbFMU.Output.q_blSlipAlarm AND (#ioUnit.Status.s_diStatus = 6 OR #ioUnit.Status.s_diStatus = 8))) AND #ioUnit.Status.s_diStatus <> 7 THEN
+    #ioUnit.Status.s_diStatus := 7;
+END_IF;
+
+// Loop Safety
+IF #ioUnit.Input.i_blStop THEN
     #ioUnit.Status.s_diStatus := 7;
 END_IF;
 
 // =================================================================
 // 4. Equipment Module Input Mapping
 // =================================================================
-// Master Run: If Unit runs, EMs run (unless stopped/manual override elsewhere)
-#LVblMasterRun := #ioUnit.Input.i_blRun AND (#ioUnit.Status.s_diStatus >= 6 AND #ioUnit.Status.s_diStatus <= 11);
+// Master Run: Active when Sequence is in progress (States 6 to 11)
+// Note: i_blRun is treated as a Start Trigger, not a continuous Enable. 
+// Stop is handled by i_blStop.
+#LVblMasterRun := (#ioUnit.Status.s_diStatus >= 6 AND #ioUnit.Status.s_diStatus <= 11) AND NOT #ioUnit.Input.i_blStop;
 
 #ioUnit.emPositioning.Input.i_blRun := #LVblRunPos AND #LVblMasterRun;
 #ioUnit.emPositioning.Input.i_blReturn := #LVblReturnPos;
@@ -218,6 +227,13 @@ END_IF;
 // Mapping to FMU
 #ioUnit.fbFMU.Input.i_diWaferType := #ioUnit.Input.i_diWaferType;
 
+// Mapping to Interface (E84 Handshake)
+#ioUnit.fbInterface.Input.i_blUnitIdle := (#ioUnit.Status.s_diStatus = 4);
+#ioUnit.fbInterface.Input.i_blUnitComplete := (#ioUnit.Status.s_diStatus = 17);
+#ioUnit.fbInterface.Input.i_blRobotReadyToLoad := "I_Robot_Ready_To_Load";
+#ioUnit.fbInterface.Input.i_blWaferPlaced := "I_Wafer_Placed";
+#ioUnit.fbInterface.Input.i_blRobotReadyToUnload := "I_Robot_Ready_To_Unload";
+
 // =================================================================
 // 5. Module Calls
 // =================================================================
@@ -225,10 +241,15 @@ END_IF;
 "emSpindle_DB"(#ioUnit.emSpindle);
 "emWaferMeasurement_DB"(#ioUnit.emWaferMeasurement);
 "FB_FMU"(#ioUnit.fbFMU);
+"FB_Interface"(#ioUnit.fbInterface);
 
 // =================================================================
 // 6. Output & HMI Mapping
 // =================================================================
+// Interface Outputs (to Robot)
+"Q_Ready_To_Load" := #ioUnit.fbInterface.Output.q_blReadyToLoad;
+"Q_Ready_To_Unload" := #ioUnit.fbInterface.Output.q_blReadyToUnload;
+
 // HMI Request Wafer
 IF #ioUnit.HMI.hmi_blRequestWafer THEN
     #ioUnit.Output.q_blRequestWafer := TRUE;

@@ -32,9 +32,7 @@ The report requires a clear separation between the Group Assignment (system-leve
 - **Mandatory Diagrams:** The explanation of the system, its components, and the overall process must be supported by diagrams based on relevant standards (e.g., ISA-88 for process hierarchy, UML/SysML for component structure or behavior).
 - **Hardware Architecture:** Include diagrams describing the physical Hardware Architecture (control devices, sensors, actuators, network topology).
 - **Process Description:** Provide diagrams detailing the process flow or state changes (e.g., using a state diagram or ISA-88 Procedure/Process Model).
-- Define interface contracts, I/O lists, and communication protocols.2.4 GROUP TESTING & VALIDATION
-
--  Plan and report comprehensive System Integration Tests that verify all the group’s system-level functional requirements.
+- Define interface contracts, I/O lists, and communication protocols.
 
 ### 2.4 GROUP TESTING & VALIDATION
 

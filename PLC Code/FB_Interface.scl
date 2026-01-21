@@ -1,0 +1,40 @@
+// =================================================================
+// FB_Interface
+// Interface Logic for Handshake with External Transport (SEMI E84)
+// =================================================================
+
+// =================================================================
+// 1. Loading Sequence
+// =================================================================
+// Condition: Unit is IDLE and Robot wants to load
+IF #ioInterface.Input.i_blRobotReadyToLoad AND #ioInterface.Input.i_blUnitIdle THEN
+    #ioInterface.Output.q_blReadyToLoad := TRUE;
+ELSE
+    #ioInterface.Output.q_blReadyToLoad := FALSE;
+END_IF;
+
+// Condition: Handshake agreed and Wafer is physically placed on Chuck
+IF #ioInterface.Output.q_blReadyToLoad AND #ioInterface.Input.i_blWaferPlaced THEN
+    // Trigger the internal sequence start
+    #ioInterface.Output.q_blStartAutoCycle := TRUE;
+ELSE
+    #ioInterface.Output.q_blStartAutoCycle := FALSE;
+END_IF;
+
+
+// =================================================================
+// 2. Unloading Sequence
+// =================================================================
+// Condition: Unit has finished processing (COMPLETE) and Robot wants to unload
+IF #ioInterface.Input.i_blUnitComplete AND #ioInterface.Input.i_blRobotReadyToUnload THEN
+    #ioInterface.Output.q_blReadyToUnload := TRUE;
+ELSE
+    #ioInterface.Output.q_blReadyToUnload := FALSE;
+END_IF;
+
+// Condition: Handshake agreed, allow vacuum release
+IF #ioInterface.Output.q_blReadyToUnload THEN
+    #ioInterface.Output.q_blReleaseWafer := TRUE;
+ELSE
+    #ioInterface.Output.q_blReleaseWafer := FALSE;
+END_IF;

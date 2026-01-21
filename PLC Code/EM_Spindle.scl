@@ -139,7 +139,8 @@ END_CASE;
 // q_rlTotalPos is the absolute position of the CM (continues accumulating)
 #LVrlCurrentPos := #LVrlNormalizedPos;
 
-"Q_Spindle_Speed" := #ioEm.cmSpindle.Output.q_rlVelocity;
+// Using Actual Velocity as a Setpoint causing self-limiting jitter.
+"Q_Spindle_Speed" := #LVrlVelocity;
 "Q_Spindle_SetPos" := #ioEm.cmSpindle.Output.q_rlTarget; // Hardware gets absolute position
 
 // Status Mapping to EM Output

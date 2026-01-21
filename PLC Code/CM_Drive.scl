@@ -122,6 +122,8 @@ CASE #ioCM.Status.s_diStatus OF
         // Set commands to FALSE so they can trigger a new edge on resume
         #MC_MOVEABSOLUTE_Instance(Axis := #Axis,
                                   Execute := FALSE);
+        #MC_MOVERELATIVE_Instance(Axis := #Axis,
+                                  Execute := FALSE);
         
         IF #LVblStartTrigger THEN
             // Resume: back to the correct active state
@@ -189,5 +191,5 @@ AND NOT #ioCM.Output.q_blBusy;
 #ioCM.HMI.hmi_diStatus := #ioCM.Status.s_diStatus;
 #ioCM.HMI.hmi_rlActualValue := LREAL_TO_REAL(#Axis.ActualPosition);
 
-#ioCM.Output.q_rlTarget := LREAL_TO_REAL(#Axis.ActualPosition);
+#ioCM.Output.q_rlTarget := LREAL_TO_REAL(#Axis.Position);
 #ioCM.Output.q_rlVelocity := LREAL_TO_REAL(#Axis.Velocity);
