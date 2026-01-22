@@ -39,3 +39,16 @@ Desktop.ini
 
 # FMU generated files
 *.fmu
+
+# Siemens TIA Portal
+*/IM/
+*/TMP/
+*/XRef/
+*/Logs/
+*.backup/
+
+# Siemens NX
+*.sys
+*.jt
+*.prt.*
+*.log

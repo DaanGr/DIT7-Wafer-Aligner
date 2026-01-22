@@ -112,7 +112,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "6ed12ce11b8a38e8",
@@ -217,15 +218,18 @@
       "bases:Create new base": false
     }
   },
-  "active": "ae6c995cb90813ca",
+  "active": "0de4ce9535c93147",
   "lastOpenFiles": [
-    "Picture/TC_04_1.png",
+    "~$fer Aligner.docx",
+    "mermaid-filter.err",
+    "Digital Twin_writing_document.md",
     "Wafer Aligner.md",
+    "Wafer Aligner.docx",
+    "Picture/TC_04_1.png",
     "Semiconducator Wafer Handling System.md",
     "Picture/Pasted.md",
     "Picture/TC_02_03_1.png",
     "Program.md",
-    "Digital Twin_writing_document.md",
     "Picture/TC_05_2.png",
     "Picture/TC_05_1.png",
     "Picture/TC_04_3.png",

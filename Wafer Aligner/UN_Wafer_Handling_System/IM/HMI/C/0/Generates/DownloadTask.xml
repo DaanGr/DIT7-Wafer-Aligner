@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<DownloadTask>
+  <ProjectInfo
+    DeviceVersion="17.0.0.0"
+    CreationTime="2026-01-20 21:36:30 (UTC)"
+    Runtime="COLORADO"
+    RtProjectName="UN_Wafer_Handling_System.HMI_1[TP2200 Comfort]"
+    RtProjectFolderName="UN_Wafer_Handling_System.HMI_1[TP2200 Comfort]"
+    DeviceType="TP2200 Comfort"
+    DisplayOrientation="0"
+    RTReleaseNo="17.0.0.0"
+    ImageReleaseNo="17.0.0.0"
+    RTCV="17.0.0.0"
+    PRCV="17.0.0.0"
+    FirmwareFileName=""
+    RuntimeFileName=""
+    RuntimeAddonFolderName="CP_15_19_22" />
+  <FullDownload>pdata.fwc</FullDownload>
+  <FullDownload
+    type="ADMINDATA">pdata.pwx</FullDownload>
+  <FullDownload>ProjectSettings.hsf</FullDownload>
+  <FullDownload>DeviceSettings.hsf</FullDownload>
+</DownloadTask>

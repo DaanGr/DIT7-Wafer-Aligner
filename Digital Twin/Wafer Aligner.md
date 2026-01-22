@@ -138,7 +138,7 @@ Collision bodies approximate the complex CAD geometry into simplified mathematic
 To interface with the Slip Dynamics FMU, a custom physical interaction was defined.
 *   **Wafer-Chuck Interface:** Calculated Friction Coefficient $\mu = 0.6$ (Static & Dynamic). 
 *   **Logic:** The simulation does not model airflow. Instead, the "Vacuum" is simulated by toggling the normal force or logical lock. When the FMU detects a slip condition (Inertia $> F_{friction}$), it triggers a logical detachment in the digital twin.
-    ![Materials](Picture/Materials.png)
+![Materials](Picture/Materials.png)
 
 ## Sensors, Actuators & Runtime Constraints
 The physical model interfaces with the TIA Portal controller via abstract signal adapters.
