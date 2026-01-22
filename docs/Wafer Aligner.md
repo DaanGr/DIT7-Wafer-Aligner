@@ -1,5 +1,4 @@
 # Introduction
---- 
 This report technically details the **Wafer Aligner**, a functional unit responsible for the precise mechanical centering and orientation of semiconductor wafers. It serves as a comprehensive guide to the unit’s digital twin implementation, covering its mechanical kinematics in Siemens NX, control logic in TIA Portal, and multi-physics validation via Functional Mock-up Units (FMU).
 
 The Wafer Aligner is designed as a high-precision "Turn-Table" station responsible for correcting the random orientation (notch alignment) of silicon wafers. This process is a mandatory prerequisite for downstream lithography and inspection steps, where alignment is critical.
@@ -10,7 +9,6 @@ This document covers the full development lifecycle of the unit's **Digital Twin
 *   **Physics Simulation (FMU):** Validation of vacuum grip stability and slip dynamics under rotational acceleration.
 
 # Unit Scope & Requirements
----
 ## Unit Definition and Role
 The **Wafer Aligner Unit** is a process station within the larger semiconductor handling system. Its primary role is to ensure that wafers, which are placed with random orientation and potential eccentricity by the transport robot, are mechanically re-oriented to a precise "Notch/Flat" position and centered. This is a prerequisite for subsequent lithography or inspection steps where alignment is mandatory.
 
@@ -60,7 +58,6 @@ graph TD
 *   **EM_Positioning:** Responsible for calculating corrective moves and managing sensor rail positioning (for multi-size wafers).
 
 # Nx Digital Twin Development
----
 ### Modelling Approach in Siemens NX
 The Digital Twin for the Wafer Aligner was developed using Siemens NX Mechatronics Concept Designer (MCD), a platform that integrates 3D mechanical models with multiphysics simulations. The development process followed a structured workflow:
 1.  **Assembly Import:** The static 3D CAD assembly was imported, ensuring the coordinate systems aligned with the global automation origin.
@@ -191,7 +188,6 @@ The physical model interfaces with the TIA Portal controller via abstract signal
 | FMU_Interface_I_FMU_Slip_Factor_slip_factor                       | I_FMU_Slip_Factor          |     ←     | WaferSlipDynamics.slip_factor          |
 
 # Control/Automation Code
----
 ## Control Architecture Overview
 The control logic for the Wafer Aligner Unit is structured according to the **ISA-88 physical hierarchy**, ensuring modularity, scalability, and ease of maintenance. This structure creates a clear separation of concerns:
 *   **Unit Module (UN):** The high-level supervisor containing the Process State Machine. It coordinates the sequence of operations but does not directly control hardware.
@@ -415,7 +411,6 @@ stateDiagram-v2
 
 
 # Unit Testing & Verification
----
 To validate the Wafer Aligner Unit, a comprehensive test plan was executed using the Digital Twin environment (NX MCD + PLCSim Advanced). The tests verify that all functional requirements (UR-01 to UR-06) are met under nominal conditions.
 
 ## Test Case Overview & Traceability
@@ -505,20 +500,7 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
 *   **Result:** **PASS**. The implemented `FB_Interface` correctly brokered the start condition. The Unit Supervisor waited for the full handshake (Ready + Placed) before initiating the vacuum and motion sequence.
     *Traceability: UR-06*
 
-## Defect Fixes Summary
-During the integration testing phase, a crucial calculation defect was identified in `EM_WaferMeasurement.scl`:
-*   **Defect:** The notch detection algorithm failed when the notch was positioned exactly at the **0°/360°** crossover point. The averaging logic (Start + End / 2) produced a result of ~180° because `(359 + 1) / 2 = 180`.
-*   **Fix:** A "Modulo Wraparound" check was implemented in the code:
-    ```scl
-    IF ABS(#LVrlNotchEndAngle - #LVrlNotchStartAngle) > 180.0 THEN
-        #LVrlNotchCenter := #LVrlNotchCenter + 180.0;
-        // ... (Modulo 360 logic)
-    END_IF;
-    ```
-*   **Verification:** The test (TC-03) was re-run with `i_diRandomPos := 6` (330° + manual offset to cross 0), proving the calculation logic now handles the boundary correctly.
-
 # Fmu Development
---- 
 ## Technical Background
 The **Functional Mock-up Interface (FMI)** is a tool-independent standard that facilitates the exchange of dynamic models and co-simulation. It allows the creation of a **Functional Mock-up Unit (FMU)**, which is a compressed file (ZIP format) containing:
 *   **modelDescription.xml**: An XML file defining the model's structure, variables (inputs, outputs, parameters), and capabilities.

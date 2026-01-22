@@ -1,5 +1,4 @@
 # Introduction
----
 ## Context and Objectives
 This report documents the development of a comprehensive **Digital Twin** for a high-precision **Wafer Handling System**, a critical subsystem in semiconductor manufacturing. Undertaken as a 7-week collaborative project, the primary objective was to conceptualize, design, and implement a fully functional virtual prototype that integrates mechanical kinematics, industrial automation logic, and multi-physics simulation.
 
@@ -21,7 +20,6 @@ Artificial Intelligence tools were utilized as intelligent assistants throughout
 
 All AI-generated content was rigorously reviewed, tested, and validated to ensure accuracy and full understanding of the implemented solution.
 # Project Background
----
 ## Industrial Process Description
 The system under development is a critical subsection of a semiconductor Front-End-of-Line (FEOL) manufacturing cluster. Specifically, it models the automated handling and alignment of silicon wafers. In the lithography process, wafers arrive in transport cassettes (FOUPs) with random radial orientations. Before any circuit patterns can be projected onto the wafer, it must be mechanically centered and rotationally aligned to a specific fiducial marker (Notch or Flat) with micrometer-level precision.
 
@@ -57,8 +55,6 @@ This modular decomposition allows for decoupled development of control logic, ea
 3.  Demonstrate the ability to detect physical failures (slip) using an integrated FMU.
 
 # System-Level Function Requirements
----
-
 ## Functional Requirements (FR)
 The following requirements define the mandated behavior of the collaborative Wafer Handling System.
 
@@ -248,7 +244,6 @@ sequenceDiagram
 ```
 
 # Testing and Validation
----
 
 The testing strategy follows a V-Model approach, starting with Unit Testing (Individual Assignment scope) and culminating in System Integration Testing (Group Assignment scope). This section focuses on the **System Integration Tests (SIT)** designed to verify the interaction between Unit 1 (Wafer Robot) and Unit 2 (Wafer Aligner), ensuring compliance with the system-level requirements.
 
@@ -280,8 +275,6 @@ The System Integration Test confirms that the distributed control architecture f
 
 
 # Conclusion and Lessons Learned
----
-
 ## Project Outcomes
 This project successfully delivered a fully functional Digital Twin of a semiconductor Wafer Handling System, integrating a SCARA Robot (Unit 1) and a Wafer Aligner (Unit 2). The virtual prototype demonstrated the capability to handle 200mm notched wafers with high precision, validating the control logic before any physical deployment.
 
@@ -296,8 +289,3 @@ The development process provided valuable insights into the complexity of modern
 *   **Simulation vs. Reality:** While the Digital Twin is high-fidelity, it relies on assumptions (e.g., rigid bodies, simplified sensor beams). Understanding these limitations is vital; the simulation proves the *logic*, but physical commissioning is still needed to tune real-world parameters like friction and sensor noise.
 *   **The Power of FMU:** We discovered that FMUs are powerful tools for extending the capabilities of MCD. However, debugging a "black box" FMU inside a third-party host (MCD) can be challenging, emphasizing the need for thorough standalone testing in Python/OpenModelica first.
 
-## Future Recommendations
-For future iterations of this Digital Twin, the following enhancements are recommended:
-1.  **Soft Body Simulation:** Implementing deformable bodies for the wafer to analyze potential stress/warping during vacuum clamping.
-2.  **HMI Visualization:** Integrating the 3D NX view directly into the HMI panel for better operator situational awareness.
-3.  **Virtual Reality (VR):** Extending the model to VR for operator training and ergonomic assessment. 
