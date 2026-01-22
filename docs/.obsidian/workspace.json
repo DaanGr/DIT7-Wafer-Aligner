@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Semiconducator Wafer Handling System.md",
+                "file": "Wafer Aligner.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Semiconducator Wafer Handling System"
+              "title": "Wafer Aligner"
             }
           },
           {
@@ -168,13 +168,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Semiconducator Wafer Handling System.md",
+                "file": "Wafer Aligner.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Semiconducator Wafer Handling System"
+              "title": "Outline of Wafer Aligner"
             }
           }
         ],
@@ -197,19 +197,20 @@
   },
   "active": "0de4ce9535c93147",
   "lastOpenFiles": [
+    "~WRL0001.tmp",
+    "~WRD0000.tmp",
+    "Semiconducator Wafer Handling System.md",
     "Wafer Aligner.md",
     "~WRL3880.tmp",
     "~WRD3853.tmp",
     "~WRL2384.tmp",
     "~WRD2360.tmp",
-    "Semiconducator Wafer Handling System.md",
     "Digital Twin_writing_document.md",
     "~$miconducator Wafer Handling System.docx",
     "Semiconducator Wafer Handling System.docx",
     "~WRL1227.tmp",
     "~WRD1203.tmp",
     "~WRL1592.tmp",
-    "~WRD1538.tmp",
     "High-Precision Optical Wafer Aligner.md",
     "Program.md",
     "Wafer Aligner FMU.md",

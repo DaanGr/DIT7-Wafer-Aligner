@@ -1,12 +1,25 @@
 # Introduction
 This report technically details the **Wafer Aligner**, a functional unit responsible for the precise mechanical centering and orientation of semiconductor wafers. It serves as a comprehensive guide to the unit’s digital twin implementation, covering its mechanical kinematics in Siemens NX, control logic in TIA Portal, and multi-physics validation via Functional Mock-up Units (FMU).
 
-The Wafer Aligner is designed as a high-precision "Turn-Table" station responsible for correcting the random orientation (notch alignment) of silicon wafers. This process is a mandatory prerequisite for downstream lithography and inspection steps, where alignment is critical.
+The Wafer Aligner is designed as a high-precision “Turn-Table” station responsible for correcting the random orientation (notch alignment) of silicon wafers. This process is a mandatory prerequisite for downstream lithography and inspection steps, where alignment is critical.
 
-This document covers the full development lifecycle of the unit's **Digital Twin**, including:
-*   **Mechanical Modelling (Siemens NX):** Kinematic definitions, rigid body dynamics, and sensor integration.
-*   **Control Engineering (TIA Portal):** Implementation of ISA-88 compliant state machines and notch detection algorithms.
-*   **Physics Simulation (FMU):** Validation of vacuum grip stability and slip dynamics under rotational acceleration.
+## Toolchain and Technologies
+
+To achieve a high-fidelity Digital Twin, the following industry-standard software suite was employed:
+
+- **Siemens NX 2312 (Mechatronics Concept Designer):** Used for 3D modelling, rigid body dynamics, and kinematic definition of the mechanical assembly.
+- **TIA Portal V20:** The engineering framework for developing the control logic (PLC) and Human-Machine Interfaces (HMI) using the S7-1500 platform.
+- **PLCSIM Advanced V4:** A virtual controller used to simulate the hardware PLC and enable communication between TIA Portal and the NX model via PROFINET/API.
+- **OpenModelica / Python:** Used to develop and export **Functional Mock-up Units (FMUs)** compliant with the FMI 2.0 standard. These units handle complex physics calculations that extend beyond standard kinematic capabilities.
+
+## AI Usage and Methodology
+
+Artificial Intelligence tools were utilized as intelligent assistants throughout the project. Their role was strictly limited to:
+- **Code Generation Assistance:** Accelerating the syntax writing for Structured Control Language (SCL) and Python scripts.
+- **Debugging:** Analyzing error logs and suggesting potential logic fixes.
+- **Documentation Refinement:** Improving the clarity and structure of technical descriptions.
+
+All AI-generated content was rigorously reviewed, tested, and validated to ensure accuracy and full understanding of the implemented solution.
 
 # Unit Scope & Requirements
 ## Unit Definition and Role
