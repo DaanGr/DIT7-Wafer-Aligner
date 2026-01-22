@@ -73,23 +73,23 @@ Rigid Bodies are the fundamental elements of the simulation, transforming geomet
 *   **RB_Wafer_200mm:**
     *   **Material:** **Silicon** (Density: $2330\ kg/m^3$).
     *   **Justification:** The correct mass ($~73\ g$ for a 200mm wafer) and rotational inertia are mandatory for calculating the centrifugal forces. If the mass is incorrect, the FMU's slip prediction will be invalid.
-    ![[Picture/RB_Wafer.png]]
+    ![RB_Wafer](Picture/RB_Wafer.png)
     
 *   **RB_CHUCK:**
     *   **Material:** **Aluminium_6061** (Density: $2700\ kg/m^3$).
     *   **Justification:** Defines the load seen by the rotary motor. While the motor is position-controlled, the inertia affects the "realistic" response of the drive train.
-    ![[Picture/RB_Chuck.png]]
+    ![RB_Chuck](Picture/RB_Chuck.png)
 
 *   **RB_ALIGNERCASE:** 
     *   **Definition:** **Fixed Rigid Body**. 
     *   **Role:** Acts as the infinite-mass "Ground" reference for the entire kinematic chain.
-    ![[Picture/RB_AlignerCase.png]]
+    ![RB_AlignerCase](Picture/RB_AlignerCase.png)
 	
 *   **RB_SPINDLE / RB_SPINDLECASE:**
     *   **Material:** **Aluminium_6061**.
     *   **Justification:** These bodies constitute the moving carriage. Their mass determines the dynamic load on the linear positioning axis (Y-Axis).
-    ![[Picture/RB_SpindleCase.png]]
-    ![[Picture/RB_Spindle.png]]
+    ![RB_SpindleCase](Picture/RB_SpindleCase.png)
+    ![RB_Spindle](Picture/RB_Spindle.png)
 
 ## Joints & Kinematic Chains
 The mechanism is modelled as a serial kinematic chain. Each joint defines the degree of freedom (DOF) between a child body and its parent.
@@ -103,13 +103,13 @@ The mechanism is modelled as a serial kinematic chain. Each joint defines the de
     *   **Axis:** Linear Y-Axis.
     *   **Function:** Enables the variable positioning of the spindle to accommodate differing wafer diameters (150mm - 300mm).
     *   **Limits:** Mechanical hard stops are defined at **0mm** and **200mm** to physically restrict the carriage travel within the machine housing.
-    ![[Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ.png]]
+    ![RB_SPINDLECASE_RB_ALIGNERCASE_SJ](Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ.png)
 
 3.  **RB_SPINDLE_RB_SPINDLECASE_HJ (Hinge Joint):**
     *   **Connection:** Spindle Case $\rightarrow$ Spindle Shaft.
     *   **Axis:** Rotational Z-Axis.
     *   **Function:** Provides the continuous $360^{\circ}$ rotation required for the scanning process.
-    ![[Picture/RB_SPINDLE_RB_SPINDLECASE_HJ.png]]
+    ![RB_SPINDLE_RB_SPINDLECASE_HJ](Picture/RB_SPINDLE_RB_SPINDLECASE_HJ.png)
 
 4.  **RB_CHUCK_RB_SPINDLE_FJ (Fixed Joint):** 
     *   **Connection:** Spindle Shaft $\rightarrow$ Vacuum Chuck.
@@ -120,44 +120,44 @@ Collision bodies approximate the complex CAD geometry into simplified mathematic
 
 *   **RB_Wafer (Composite Body):**
     *   **CB_Bottom (Cylinder):** A simple flat cylinder representing the main surface contact with the chuck.
-    ![[Picture/CB_Bottom.png]]
+    ![CB_Bottom](Picture/CB_Bottom.png)
     *   **CB_Edge (User Defined Convex):** A highly precise convex hull generated with a point spacing of **3mm**. This high resolution is critical because the optical sensor ray-cast must detect the subtle geometry of the wafer flat/notch. A coarse mesh would cause "noise" in the sensor reading.
-    ![[Picture/CB_Edge.png]]
+    ![CB_Edge](Picture/CB_Edge.png)
     *   **CB_Notch (Mesh):** An exact mesh representation of the V-notch. Standard primitives (Box/Cylinder) cannot represent this negative geometry efficiently.
-    ![[Picture/CB_Notch.png]]
+    ![CB_Notch](Picture/CB_Notch.png)
 
 *   **RB_Chuck (Cylinder):** 
     *   **CB_Chuck:** A simple cylinder matching the vacuum table diameter.
-    ![[Picture/CB_Chuck.png]]
+    ![CB_Chuck](Picture/CB_Chuck.png)
 
 *   **RB_SpindleCase (Box):** 
     *   **CB_Spindle_Case:** A box primitive allowing the inductive home sensor to detect the linear axis position.
-    ![[Picture/CB_Spindle_Case.png]]
+    ![CB_Spindle_Case](Picture/CB_Spindle_Case.png)
 
 **Contact Material & Friction:**
 To interface with the Slip Dynamics FMU, a custom physical interaction was defined.
 *   **Wafer-Chuck Interface:** Calculated Friction Coefficient $\mu = 0.6$ (Static & Dynamic). 
 *   **Logic:** The simulation does not model airflow. Instead, the "Vacuum" is simulated by toggling the normal force or logical lock. When the FMU detects a slip condition (Inertia $> F_{friction}$), it triggers a logical detachment in the digital twin.
-    ![[Picture/Materials.png]]
+    ![Materials](Picture/Materials.png)
 
 ## Sensors, Actuators & Runtime Constraints
 The physical model interfaces with the TIA Portal controller via abstract signal adapters.
 
 *   **Position Controls (Actuators):**
     *   `RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1)`: Controls the **Velocity** and **Target Position** of the rotary axis.
-    ![[Picture/RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1).png]]
+    ![RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1)](Picture/RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1).png)
     *   `RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1)`: Controls the **Position** of the linear rail.
-    ![[Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1).png]]
+    ![RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1)](Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1).png)
 
 *   **Sensors:**
     *   `Wafer_DistanceSensor`: An optical **Ray-Cast** sensor. It measures the exact distance from the sensor head to the `CB_Edge` of the wafer. This raw data is sent to the PLC to construct the edge profile array.
-    ![[Picture/Wafer_DistanceSensor.png]]
+    ![Wafer_DistanceSensor](Picture/Wafer_DistanceSensor.png)
     *   `Spindle_Case_DistanceSensor`: A standard distance sensor providing feedback on the linear carriage position.
-    ![[Picture/Spindle_Case_DistanceSensor.png]]
+    ![Spindle_Case_DistanceSensor](Picture/Spindle_Case_DistanceSensor.png)
 
  **Runtime Behaviors:**
     `RB_Chuck_SC`: A custom signal adapter that toggles the "Active" state of the friction joint based on the PLC Vacuum command.
-    ![[Picture/RB_Chuck_SC.png]]
+    ![RB_Chuck_SC](Picture/RB_Chuck_SC.png)
 
 ## Simplifications & Justifications
 | Simplification | Justification |
@@ -457,10 +457,10 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   Calculated Notch Angle: **210.80°**.
     *   The `EM_WaferMeasurement` block correctly averaged the notch samples and handled the `c_rlSensorOffset` (180.0°).
     
-    ![[Picture/Pasted image 20260121163140.png]]
-    ![[Picture/Pasted image 20260121163553.png]]
-    ![[Picture/Pasted image 20260121163612.png]]
-    ![[Picture/Pasted image 20260121163737.png]]
+    ![TC_02_03_1](Picture/TC_02_03_1.png)
+    ![TC_02_03_](Picture/TC_02_03_2.png)
+    ![TC_02_03_3](Picture/TC_02_03_3.png)
+    ![TC_02_03_4](Picture/TC_02_03_4.png)
     *Traceability: UR-02, UR-03*
 
 ### TC-04: Alignment Correction
@@ -472,9 +472,9 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   Spindle executes a correction move. The target position is calculated as `Correction = Notch + Offset`.
     *   **Visual Check:** The wafer notch aligns with the sensor marking in the NX 3D view.
 *   **Result:** **PASS**. The spindle executed a move to **360+~60°**
-	![[Picture/Pasted image 20260121163858.png]]
-    ![[Picture/Pasted image 20260121165116.png]]
-    ![[Picture/Pasted image 20260121165123.png]]
+	![TC_04_1](Picture/TC_04_1.png)
+    ![TC_04_2](Picture/TC_04_2.png)
+    ![TC_04_3](Picture/TC_04_3.png)
     *Traceability: UR-04*
 
 ### TC-05: Slip Detection Safety (FMU Integration)
@@ -488,8 +488,8 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   **NX Physics:** Wafer visibly detaches/slides on the chuck.
 *   **Result:** **PASS**.
     *   Logs show: `Slip detected at T=250s`.
-    ![[Picture/Pasted image 20260121165520.png]]
-    ![[Picture/Pasted image 20260121165533.png]]
+    ![TC_05_1](Picture/TC_05_1.png)
+    ![TC_05_2](Picture/TC_05_2.png)
     *Traceability: UR-05*
 
 ### TC-06: E84 Interface Handshake
@@ -566,10 +566,10 @@ Before integration, the FMU was validated using a stand-alone Python script (`te
     *Result:* Immediate Slip detected (Pass).
 
 Characteristic curves were generated to verify the linear relationship between acceleration and slip risk, ensuring the physics model behaves predictably.
-![[Picture/test_scenarios_results.png]]
-![[Picture/vacuum_characteristic.png]]
-![[Picture/slip_risk_contour.png]]
-![[Picture/slip_characteristic.png]]
+![test_scenarios_results](Picture/test_scenarios_results.png)
+![vacuum_characteristic](Picture/vacuum_characteristic.png)
+![slip_risk_contour](Picture/slip_risk_contour.png)
+![slip_characteristic](Picture/slip_characteristic.png)
 ## Fmu Integration & Portability
 
 ### Integration Strategy
@@ -582,5 +582,5 @@ The FMU is designed to interface with the **Unit Supervisor (UN_WaferAligner)** 
 To satisfy the FMI 2.0 mandatory requirement for portability, the compiled FMU (`WaferSlipDynamics.fmu`) was tested in an external environment distinct from its development source.
 
 This is done in NX as a co-simulation. In screenshots below can be seen how it looks in NX. Also can be seen that FMI2.0 is applied.
-![[Picture/FMU Active in NX.png]]
-![[Picture/FMU connection in NX.png]]
+![FMU Active in NX](Picture/FMU_Active_in_NX.png)
+![FMU connection in NX](Picture/FMU_connection_in_NX.png)

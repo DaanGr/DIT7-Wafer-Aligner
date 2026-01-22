@@ -9,7 +9,7 @@
         "dimension": 50.12391573729864,
         "children": [
           {
-            "id": "24a0efb0f0580123",
+            "id": "0de4ce9535c93147",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -23,17 +23,15 @@
             }
           },
           {
-            "id": "0de4ce9535c93147",
+            "id": "e579db28319da5ee",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "image",
               "state": {
-                "file": "Semiconducator Wafer Handling System.md",
-                "mode": "source",
-                "source": false
+                "file": "Picture/TC_04_1.png"
               },
-              "icon": "lucide-file",
-              "title": "Semiconducator Wafer Handling System"
+              "icon": "lucide-image",
+              "title": "TC_04_1"
             }
           }
         ]
@@ -219,21 +217,22 @@
       "bases:Create new base": false
     }
   },
-  "active": "24a0efb0f0580123",
+  "active": "ae6c995cb90813ca",
   "lastOpenFiles": [
-    "Program.md",
-    "Picture/Pasted image 20260121163858.png",
+    "Picture/TC_04_1.png",
     "Wafer Aligner.md",
     "Semiconducator Wafer Handling System.md",
+    "Picture/Pasted.md",
+    "Picture/TC_02_03_1.png",
+    "Program.md",
     "Digital Twin_writing_document.md",
-    "Picture/Pasted image 20260121165533.png",
-    "Picture/Pasted image 20260121165520.png",
-    "Picture/Pasted image 20260121165123.png",
-    "Picture/Pasted image 20260121165116.png",
-    "Picture/Pasted image 20260121163737.png",
-    "Picture/Pasted image 20260121163612.png",
-    "Picture/Pasted image 20260121163553.png",
-    "Picture/Pasted image 20260121163140.png",
+    "Picture/TC_05_2.png",
+    "Picture/TC_05_1.png",
+    "Picture/TC_04_3.png",
+    "Picture/TC_04_2.png",
+    "Picture/TC_02_03_4.png",
+    "Picture/TC_02_03_3.png",
+    "Picture/TC_02_03_2.png",
     "High-Precision Optical Wafer Aligner.md",
     "Picture/RB_Chuck_SC.png",
     "Wafer Aligner FMU.md",
