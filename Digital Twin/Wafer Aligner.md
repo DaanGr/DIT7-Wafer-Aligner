@@ -1,10 +1,17 @@
-# Individual Assignment Requirements
+# Introduction
 --- 
+This report technically details the **Wafer Aligner**, a functional unit responsible for the precise mechanical centering and orientation of semiconductor wafers. It serves as a comprehensive guide to the unit’s digital twin implementation, covering its mechanical kinematics in Siemens NX, control logic in TIA Portal, and multi-physics validation via Functional Mock-up Units (FMU).
 
-## Unit Scope & Requirements
+The Wafer Aligner is designed as a high-precision "Turn-Table" station responsible for correcting the random orientation (notch alignment) of silicon wafers. This process is a mandatory prerequisite for downstream lithography and inspection steps, where alignment is critical.
+
+This document covers the full development lifecycle of the unit's **Digital Twin**, including:
+*   **Mechanical Modelling (Siemens NX):** Kinematic definitions, rigid body dynamics, and sensor integration.
+*   **Control Engineering (TIA Portal):** Implementation of ISA-88 compliant state machines and notch detection algorithms.
+*   **Physics Simulation (FMU):** Validation of vacuum grip stability and slip dynamics under rotational acceleration.
+
+# Unit Scope & Requirements
 ---
-
-### Unit Definition and Role
+## Unit Definition and Role
 The **Wafer Aligner Unit** is a process station within the larger semiconductor handling system. Its primary role is to ensure that wafers, which are placed with random orientation and potential eccentricity by the transport robot, are mechanically re-oriented to a precise "Notch/Flat" position and centered. This is a prerequisite for subsequent lithography or inspection steps where alignment is mandatory.
 
 The unit operates as a "Turn-Table" station integrating precise rotary motion control, vacuum physics for wafer holding, and optical sensing for edge detection.
@@ -21,7 +28,7 @@ The following requirements are derived from the system-level objectives (Through
 | **UR-05** | Safety    | The unit must detect potential wafer slip using the integrated FMU model.             |
 | **UR-06** | Interface | The unit must adhere to the SEMI E84 Handshake protocol for loading/unloading.        |
 
-### Unit Decomposition (ISA-88)
+## Unit Decomposition (ISA-88)
 To manage the complexity of the alignment process, the unit is decomposed according to the ISA-88 standard into Equipment Modules (EM) and Control Modules (CM). This modular architecture ensures separation of concerns between motion, sensing, and global coordination.
 
 ```mermaid
@@ -52,7 +59,7 @@ graph TD
 *   **EM_WaferMeasurement:** Handles the optical scanning process using `SE_DistanceSensor` to record wafer edge positions.
 *   **EM_Positioning:** Responsible for calculating corrective moves and managing sensor rail positioning (for multi-size wafers).
 
-## Nx Digital Twin Development
+# Nx Digital Twin Development
 ---
 ### Modelling Approach in Siemens NX
 The Digital Twin for the Wafer Aligner was developed using Siemens NX Mechatronics Concept Designer (MCD), a platform that integrates 3D mechanical models with multiphysics simulations. The development process followed a structured workflow:
@@ -60,31 +67,31 @@ The Digital Twin for the Wafer Aligner was developed using Siemens NX Mechatroni
 2.  **Physics Definition:** Using the **Physics Navigator**, the static model was enriched with dynamic properties. The hierarchy in the Navigator strictly follows the mechanical assembly structure (Parent-Child relationships) to ensure traceability and correct kinematic behavior.
 3.  **Signal Interface:** A layer of Signals and runtime behaviors was added to facilitate communication with the external controller (PLC) and the Functional Mock-up Unit (FMU).
 
-### Rigid Bodies & Mass Properties
+## Rigid Bodies & Mass Properties
 Rigid Bodies are the fundamental elements of the simulation, transforming geometric surfaces into physical objects with mass and inertia. Correct definitions are critical for the FMU slip validation, as the inertial forces during rotation effectively stress the vacuum grip.
 
 *   **RB_Wafer_200mm:**
     *   **Material:** **Silicon** (Density: $2330\ kg/m^3$).
     *   **Justification:** The correct mass ($~73\ g$ for a 200mm wafer) and rotational inertia are mandatory for calculating the centrifugal forces. If the mass is incorrect, the FMU's slip prediction will be invalid.
-    ![[RB_Wafer.png]]
+    ![[Picture/RB_Wafer.png]]
     
 *   **RB_CHUCK:**
     *   **Material:** **Aluminium_6061** (Density: $2700\ kg/m^3$).
     *   **Justification:** Defines the load seen by the rotary motor. While the motor is position-controlled, the inertia affects the "realistic" response of the drive train.
-    ![[RB_Chuck.png]]
+    ![[Picture/RB_Chuck.png]]
 
 *   **RB_ALIGNERCASE:** 
     *   **Definition:** **Fixed Rigid Body**. 
     *   **Role:** Acts as the infinite-mass "Ground" reference for the entire kinematic chain.
-    ![[RB_AlignerCase.png]]
+    ![[Picture/RB_AlignerCase.png]]
 	
 *   **RB_SPINDLE / RB_SPINDLECASE:**
     *   **Material:** **Aluminium_6061**.
     *   **Justification:** These bodies constitute the moving carriage. Their mass determines the dynamic load on the linear positioning axis (Y-Axis).
-    ![[RB_SpindleCase.png]]
-    ![[RB_Spindle.png]]
+    ![[Picture/RB_SpindleCase.png]]
+    ![[Picture/RB_Spindle.png]]
 
-### Joints & Kinematic Chains
+## Joints & Kinematic Chains
 The mechanism is modelled as a serial kinematic chain. Each joint defines the degree of freedom (DOF) between a child body and its parent.
 
 1.  **RB_ALIGNERCASE_FJ (Fixed Joint):** 
@@ -96,69 +103,69 @@ The mechanism is modelled as a serial kinematic chain. Each joint defines the de
     *   **Axis:** Linear Y-Axis.
     *   **Function:** Enables the variable positioning of the spindle to accommodate differing wafer diameters (150mm - 300mm).
     *   **Limits:** Mechanical hard stops are defined at **0mm** and **200mm** to physically restrict the carriage travel within the machine housing.
-    ![[RB_SPINDLECASE_RB_ALIGNERCASE_SJ.png]]
+    ![[Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ.png]]
 
 3.  **RB_SPINDLE_RB_SPINDLECASE_HJ (Hinge Joint):**
     *   **Connection:** Spindle Case $\rightarrow$ Spindle Shaft.
     *   **Axis:** Rotational Z-Axis.
     *   **Function:** Provides the continuous $360^{\circ}$ rotation required for the scanning process.
-    ![[RB_SPINDLE_RB_SPINDLECASE_HJ.png]]
+    ![[Picture/RB_SPINDLE_RB_SPINDLECASE_HJ.png]]
 
 4.  **RB_CHUCK_RB_SPINDLE_FJ (Fixed Joint):** 
     *   **Connection:** Spindle Shaft $\rightarrow$ Vacuum Chuck.
     *   **Function:** Rigidly couples the chuck to the motor shaft, ensuring they move as a single entity.
 
-### Collision Bodies & Contact Settings
+## Collision Bodies & Contact Settings
 Collision bodies approximate the complex CAD geometry into simplified mathematical shapes for efficient contact detection. A high-fidelity definition was required for the Wafer to ensure accurate sensor interaction.
 
 *   **RB_Wafer (Composite Body):**
     *   **CB_Bottom (Cylinder):** A simple flat cylinder representing the main surface contact with the chuck.
-    ![[CB_Bottom.png]]
+    ![[Picture/CB_Bottom.png]]
     *   **CB_Edge (User Defined Convex):** A highly precise convex hull generated with a point spacing of **3mm**. This high resolution is critical because the optical sensor ray-cast must detect the subtle geometry of the wafer flat/notch. A coarse mesh would cause "noise" in the sensor reading.
-    ![[CB_Edge.png]]
+    ![[Picture/CB_Edge.png]]
     *   **CB_Notch (Mesh):** An exact mesh representation of the V-notch. Standard primitives (Box/Cylinder) cannot represent this negative geometry efficiently.
-    ![[CB_Notch.png]]
+    ![[Picture/CB_Notch.png]]
 
 *   **RB_Chuck (Cylinder):** 
     *   **CB_Chuck:** A simple cylinder matching the vacuum table diameter.
-    ![[CB_Chuck.png]]
+    ![[Picture/CB_Chuck.png]]
 
 *   **RB_SpindleCase (Box):** 
     *   **CB_Spindle_Case:** A box primitive allowing the inductive home sensor to detect the linear axis position.
-    ![[CB_Spindle_Case.png]]
+    ![[Picture/CB_Spindle_Case.png]]
 
 **Contact Material & Friction:**
 To interface with the Slip Dynamics FMU, a custom physical interaction was defined.
 *   **Wafer-Chuck Interface:** Calculated Friction Coefficient $\mu = 0.6$ (Static & Dynamic). 
 *   **Logic:** The simulation does not model airflow. Instead, the "Vacuum" is simulated by toggling the normal force or logical lock. When the FMU detects a slip condition (Inertia $> F_{friction}$), it triggers a logical detachment in the digital twin.
-    ![[Materials.png]]
+    ![[Picture/Materials.png]]
 
-### Sensors, Actuators & Runtime Constraints
+## Sensors, Actuators & Runtime Constraints
 The physical model interfaces with the TIA Portal controller via abstract signal adapters.
 
 *   **Position Controls (Actuators):**
-    *   `RB_SPINDLE..._PC(1)`: Controls the **Velocity** and **Target Position** of the rotary axis.
-    ![[RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1).png]]
-    *   `RB_SPINDLECASE..._SJ(1)`: Controls the **Position** of the linear rail.
-    ![[RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1).png]]
+    *   `RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1)`: Controls the **Velocity** and **Target Position** of the rotary axis.
+    ![[Picture/RB_SPINDLE_RB_SPINDLECASE_HJ(1)_PC(1).png]]
+    *   `RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1)`: Controls the **Position** of the linear rail.
+    ![[Picture/RB_SPINDLECASE_RB_ALIGNERCASE_SJ(1).png]]
 
 *   **Sensors:**
     *   `Wafer_DistanceSensor`: An optical **Ray-Cast** sensor. It measures the exact distance from the sensor head to the `CB_Edge` of the wafer. This raw data is sent to the PLC to construct the edge profile array.
-    ![[Wafer_DistanceSensor.png]]
+    ![[Picture/Wafer_DistanceSensor.png]]
     *   `Spindle_Case_DistanceSensor`: A standard distance sensor providing feedback on the linear carriage position.
-    ![[Spindle_Case_DistanceSensor.png]]
+    ![[Picture/Spindle_Case_DistanceSensor.png]]
 
  **Runtime Behaviors:**
     `RB_Chuck_SC`: A custom signal adapter that toggles the "Active" state of the friction joint based on the PLC Vacuum command.
-    ![[RB_Chuck_SC.png]]
+    ![[Picture/RB_Chuck_SC.png]]
 
-### Simplifications & Justifications
+## Simplifications & Justifications
 | Simplification | Justification |
 | :--- | :--- |
 | **Rigid Body Assumption** | All components are modelled as rigid. Structural deformation (flexing) is ignored as the alignment process happens at low speeds with low loads, making deformation negligible for the control logic validation. |
 | **Vacuum Dynamics** | The complex fluid dynamics of the vacuum suction are simplified into a binary "stick/slip" friction state modification, which is sufficient for checking kinematic safety. |
 | **Optical Sensor** | The through-beam scanner is modelled as a simplified single-ray distance sensor. This reduces ray-tracing computational load while still providing the necessary geometry data for the notch detection algorithm. |
-### Signal Mapping
+## Signal Mapping
 
 | Connection Name                                                   | MCD Signal Name            | Direction | External Signal Name                   |
 | :---------------------------------------------------------------- | :------------------------- | :-------: | :------------------------------------- |
@@ -183,15 +190,15 @@ The physical model interfaces with the TIA Portal controller via abstract signal
 | FMU_Interface_I_FMU_Slip_Alarm_is_slipping                        | I_FMU_Slip_Alarm           |     ←     | WaferSlipDynamics.is_slipping          |
 | FMU_Interface_I_FMU_Slip_Factor_slip_factor                       | I_FMU_Slip_Factor          |     ←     | WaferSlipDynamics.slip_factor          |
 
-## Control/Automation Code
+# Control/Automation Code
 ---
-### Control Architecture Overview
+## Control Architecture Overview
 The control logic for the Wafer Aligner Unit is structured according to the **ISA-88 physical hierarchy**, ensuring modularity, scalability, and ease of maintenance. This structure creates a clear separation of concerns:
 *   **Unit Module (UN):** The high-level supervisor containing the Process State Machine. It coordinates the sequence of operations but does not directly control hardware.
 *   **Equipment Modules (EM):** Functional subsystems (e.g., Spindle, Positioning) that encapsulate specific capabilities. They execute commands from the Unit (e.g., "Go to Position") and handle the internal complexity of how to achieve that.
 *   **Control Modules (CM):** The lowest level of logic that interfaces directly with physical actuators and sensors (e.g., Motor Drives, Valves).
 
-### Used Standards
+## Used Standards
 To maintain high code quality and interoperability, the solution strictly adheres to the following standards:
 
 #### Standardized State Model (PackML)
@@ -231,7 +238,7 @@ stateDiagram-v2
     CLEARING --> STOPPED : Done
 ```
 
-#### Data Types & Naming (Hungarian Notation)
+### Data Types & Naming (Hungarian Notation)
 **Internal Data Handling (LV Tags):**
 To ensure strict encapsulation, the architecture distinguishes between public interfaces and private logic. **Local Variables** (prefixed with `#LV` in the code) are used exclusively for internal state management. These variables follow **Hungarian Notation** to strictly define data types:
 *   `bl`: **Boolean** (e.g., `#LVblRun` - Digital flag)
@@ -240,7 +247,7 @@ To ensure strict encapsulation, the architecture distinguishes between public in
 
 This practice prevents external modules from accessing internal logic and allows developers to instantly recognize variable types, reducing assignment errors.
 
-#### User Defined Types (UDTs)
+### User Defined Types (UDTs)
 To ensure clean interfaces and prevent "spaghetti code", communication between blocks is done exclusively via **User Defined Types (UDTs)**. Each module exposes a standard set of structures:
 *   **Input:** Commands and parameters from superior blocks (e.g., `i_blRun`, `i_rlTarget`).
 *   **Output:** Status and feedback to superior blocks (e.g., `q_blDone`, `q_rlActualPos`).
@@ -249,10 +256,10 @@ To ensure clean interfaces and prevent "spaghetti code", communication between b
 
 This standardization ensures that every module interaction is predictable and type-safe.
 
-#### Documentation Standards
+### Documentation Standards
 To ensure maintainability, the code includes explicit comments for every state transition and significant logic block. This allows future developers to understand the "why" behind the logic, not just the "how".
 
-### UN_WaferAligner (Unit Supervisor)
+## UN_WaferAligner (Unit)
 The `UN_WaferAligner` block is the brain of the operation. It implements a sequential state machine that orchestrates the alignment process. It does not perform complex motion calculations itself; instead, it delegates tasks to the Equipment Modules.
 
 #### State Machine Logic
@@ -290,7 +297,7 @@ stateDiagram-v2
     STOP --> IDLE : Reset
 ```
 
-#### Code Implementation (Structure)
+### Code Implementation (Structure)
 The logic is implemented in **SCL (Structured Control Language)** using a `CASE` statement for clear state transition management. The code makes extensive use of User Defined Types (UDTs) for clean interfaces (`#ioUnit`).
 
 **Excerpt from `UN_WaferAligner.scl`:**
@@ -315,10 +322,10 @@ CASE #ioUnit.Status.s_diStatus OF
          // ...
 ```
 
-### Equipment Modules
+## Equipment Modules
 Equipment Modules act as intelligent agents. They receive high-level commands (e.g., Target Velocity, Target Position) and manage the underlying physics and control loops.
 
-#### EM_Spindle
+### EM_Spindle
 This module manages the rotary axis. It handles the translation of the Unit's request ("Rotate 360 degrees" or "Correct by 12 degrees") into precise drive commands.
 *   **Modes:** Supports both Automatic (Sequence, `s_diOpMode=0`) and Manual (HMI, `s_diOpMode=1`) modes.
 *   **Sequential Logic:** It tracks a normalized 0-360° position relative to the starting point of the measure cycle (`#LVrlNormalizedPos`), ensuring the correction move is accurate regardless of current motor alignment.
@@ -344,7 +351,7 @@ stateDiagram-v2
     COMPLETE --> IDLE : Reset / New Trig
 ```
 
-#### EM_WaferMeasurement
+### EM_WaferMeasurement
 This module encapsulates the sensing logic. Instead of the Unit checking the raw sensor value every cycle, this module monitors the `SE_DistanceSensor` during the scan phase and calculates the required result.
 *   **Notch Detection Logic:**
     The algorithm identifies the wafer notch by monitoring the deviation (`Delta`) between current distance and nominal radius.
@@ -369,7 +376,7 @@ stateDiagram-v2
     COMPLETE --> IDLE : Reset
 ```
 
-#### EM_Positioning
+### EM_Positioning
 Controls the linear positioning of the wafer (load/unload) across three standard sizes (150mm, 200mm, 300mm). It abstracts the complexity of two separate drives (`CM_Drive` for Main Axis, `CM_Drive` for Sensor Axis) into a single "Positioning" interface for the Unit.
 *   **Flexible Configuration:** Uses config tags (`c_rlPos1` to `c_rlPos3`) to define standard loading positions.
 *   **Verification:** It includes a "Grip Check" logic in the **RUNNING (6)** state. Use `#LVblGrip := TRUE;` to ensure vacuum integrity before moving.
@@ -386,14 +393,20 @@ stateDiagram-v2
     state "STOPPED (2)" as STOPPED
     state "ABORTING (3)" as ABORTING
 
-    IDLE --> RUNNING : i_blRun
-    RUNNING --> COMPLETE : InPosition
-    RUNNING --> PAUSED : !i_blRun
-    RUNNING --> ABORTING : Grip Lost
+    IDLE --> RUNNING : Start & !Stop
     
-    PAUSED --> RUNNING : Resume
-    COMPLETE --> IDLE : Reset
-    ABORTING --> STOPPED : Done
+    RUNNING --> PAUSED : !Start OR Pause
+    RUNNING --> COMPLETE : Motion Done
+    RUNNING --> STOPPING : Stop
+    
+    STOPPING --> STOPPED : !Busy
+    
+    PAUSED --> RUNNING : Start & !Pause
+    PAUSED --> STOPPING : Stop
+    
+    COMPLETE --> IDLE : !Start
+    
+    ABORTING --> STOPPED : Auto Transition
     STOPPED --> IDLE : Reset
 ```
 
@@ -401,11 +414,11 @@ stateDiagram-v2
 
 
 
-## Unit Testing & Verification
+# Unit Testing & Verification
 ---
 To validate the Wafer Aligner Unit, a comprehensive test plan was executed using the Digital Twin environment (NX MCD + PLCSim Advanced). The tests verify that all functional requirements (UR-01 to UR-06) are met under nominal conditions.
 
-### Test Case Overview & Traceability
+## Test Case Overview & Traceability
 The following table maps each Requirement ID to a specific Test Case, ensuring 100% coverage.
 
 | Test ID | Associated Requirement | Test Description | Priority |
@@ -417,9 +430,9 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
 | **TC-05** | **UR-05** (Safety) | Trigger wafer slip condition via FMU and verify Stop. | High |
 | **TC-06** | **UR-06** (Interface) | Simulate E84 handshake signals for Loading sequence. | Medium |
 
-### Detailed Test Cases
+## Detailed Test Cases
 
-#### TC-01: Vacuum Safety Interlock
+### TC-01: Vacuum Safety Interlock
 *   **Objective:** Ensure the spindle cannot rotate if the vacuum grip is not confirmed by the vacuum sensor/system.
 *   **Input Conditions:**
     1.  System Status: `IDLE (4)`.
@@ -431,7 +444,7 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
 *   **Result:** **PASS**. The control logic successfully blocked the move command. The trace in `EM_Positioning.scl` confirmed that `#LVblRunCm` remained `FALSE` because the vacuum feedback check failed.
     *Traceability: UR-01*
 
-#### TC-02 & TC-03: Scan & Notch Calculation
+### TC-02 & TC-03: Scan & Notch Calculation
 *   **Objective:** Verify that the system correctly maps the edge profile and calculates the notch orientation.
 *   **Input Conditions:**
     1.  **PLC Test Mode:** Set `UN_WaferAligner` state to `TEST (5)`.
@@ -444,13 +457,13 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   Calculated Notch Angle: **210.80°**.
     *   The `EM_WaferMeasurement` block correctly averaged the notch samples and handled the `c_rlSensorOffset` (180.0°).
     
-    ![[Pasted image 20260121163140.png]]
-    ![[Pasted image 20260121163553.png]]
-    ![[Pasted image 20260121163612.png]]
-    ![[Pasted image 20260121163737.png]]
+    ![[Picture/Pasted image 20260121163140.png]]
+    ![[Picture/Pasted image 20260121163553.png]]
+    ![[Picture/Pasted image 20260121163612.png]]
+    ![[Picture/Pasted image 20260121163737.png]]
     *Traceability: UR-02, UR-03*
 
-#### TC-04: Alignment Correction
+### TC-04: Alignment Correction
 *   **Objective:** Verify the unit rotates the wafer to the target alignment angle (0 degrees / 12 o'clock).
 *   **Input Conditions:**
     1.  Notch at  ~300°.
@@ -459,12 +472,12 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   Spindle executes a correction move. The target position is calculated as `Correction = Notch + Offset`.
     *   **Visual Check:** The wafer notch aligns with the sensor marking in the NX 3D view.
 *   **Result:** **PASS**. The spindle executed a move to **360+~60°**
-    ![[Pasted image 20260121163858.png]]
-    ![[Pasted image 20260121165116.png]]
-    ![[Pasted image 20260121165123.png]]
+	![[Picture/Pasted image 20260121163858.png]]
+    ![[Picture/Pasted image 20260121165116.png]]
+    ![[Picture/Pasted image 20260121165123.png]]
     *Traceability: UR-04*
 
-#### TC-05: Slip Detection Safety (FMU Integration)
+### TC-05: Slip Detection Safety (FMU Integration)
 *   **Objective:** Validate that the FMU correctly interrupts operation if acceleration exceeds the physical holding capability.
 *   **Input Conditions:**
     1.  **Wafer Type:** 200mm (High Inertia).
@@ -475,11 +488,11 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
     *   **NX Physics:** Wafer visibly detaches/slides on the chuck.
 *   **Result:** **PASS**.
     *   Logs show: `Slip detected at T=250s`.
-    ![[Pasted image 20260121165520.png]]
-    ![[Pasted image 20260121165533.png]]
+    ![[Picture/Pasted image 20260121165520.png]]
+    ![[Picture/Pasted image 20260121165533.png]]
     *Traceability: UR-05*
 
-#### TC-06: E84 Interface Handshake
+### TC-06: E84 Interface Handshake
 *   **Objective:** Verify signal exchange with the transport robot (Simulated via `FB_Interface`).
 *   **Input Conditions:**
     1.  Unit Status = `IDLE (4)`.
@@ -492,7 +505,7 @@ The following table maps each Requirement ID to a specific Test Case, ensuring 1
 *   **Result:** **PASS**. The implemented `FB_Interface` correctly brokered the start condition. The Unit Supervisor waited for the full handshake (Ready + Placed) before initiating the vacuum and motion sequence.
     *Traceability: UR-06*
 
-### Defect Fixes Summary
+## Defect Fixes Summary
 During the integration testing phase, a crucial calculation defect was identified in `EM_WaferMeasurement.scl`:
 *   **Defect:** The notch detection algorithm failed when the notch was positioned exactly at the **0°/360°** crossover point. The averaging logic (Start + End / 2) produced a result of ~180° because `(359 + 1) / 2 = 180`.
 *   **Fix:** A "Modulo Wraparound" check was implemented in the code:
@@ -553,10 +566,10 @@ Before integration, the FMU was validated using a stand-alone Python script (`te
     *Result:* Immediate Slip detected (Pass).
 
 Characteristic curves were generated to verify the linear relationship between acceleration and slip risk, ensuring the physics model behaves predictably.
-![[test_scenarios_results.png]]
-![[vacuum_characteristic.png]]
-![[slip_risk_contour.png]]
-![[slip_characteristic.png]]
+![[Picture/test_scenarios_results.png]]
+![[Picture/vacuum_characteristic.png]]
+![[Picture/slip_risk_contour.png]]
+![[Picture/slip_characteristic.png]]
 ## Fmu Integration & Portability
 
 ### Integration Strategy
@@ -569,5 +582,5 @@ The FMU is designed to interface with the **Unit Supervisor (UN_WaferAligner)** 
 To satisfy the FMI 2.0 mandatory requirement for portability, the compiled FMU (`WaferSlipDynamics.fmu`) was tested in an external environment distinct from its development source.
 
 This is done in NX as a co-simulation. In screenshots below can be seen how it looks in NX. Also can be seen that FMI2.0 is applied.
-![[FMU Active in NX.png]]
-![[FMU connection in NX.png]]
+![[Picture/FMU Active in NX.png]]
+![[Picture/FMU connection in NX.png]]
